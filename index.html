@@ -203,17 +203,40 @@
   setTimeout(updateTicker, 2000);
 })();
 
-// Direction buttons
-document.getElementById('btn-buy').addEventListener('click', function() {
-  if (window._gameLoop) window._gameLoop.direction = 'LONG';
-  this.style.borderColor = 'var(--green)';
-  setTimeout(() => this.style.borderColor = '', 500);
-});
-document.getElementById('btn-sell').addEventListener('click', function() {
-  if (window._gameLoop) window._gameLoop.direction = 'SHORT';
-  this.style.borderColor = 'var(--red)';
-  setTimeout(() => this.style.borderColor = '', 500);
-});
+// Direction buttons — only active during WEEKEND state
+(function() {
+  const btnBuy  = document.getElementById('btn-buy');
+  const btnSell = document.getElementById('btn-sell');
+
+  function updateDirButtons() {
+    const gl = window._gameLoop;
+    const active = gl && gl.state === 'WEEKEND';
+    btnBuy.disabled  = !active;
+    btnSell.disabled = !active;
+    btnBuy.classList.toggle('dir-inactive', !active);
+    btnSell.classList.toggle('dir-inactive', !active);
+
+    if (gl) {
+      btnBuy.classList.toggle('dir-selected', gl.direction === 'LONG');
+      btnSell.classList.toggle('dir-selected', gl.direction === 'SHORT');
+    }
+  }
+
+  btnBuy.addEventListener('click', function() {
+    if (!window._gameLoop || window._gameLoop.state !== 'WEEKEND') return;
+    window._gameLoop.direction = 'LONG';
+    updateDirButtons();
+  });
+
+  btnSell.addEventListener('click', function() {
+    if (!window._gameLoop || window._gameLoop.state !== 'WEEKEND') return;
+    window._gameLoop.direction = 'SHORT';
+    updateDirButtons();
+  });
+
+  // Poll every 500ms to sync button state with game state
+  setInterval(updateDirButtons, 500);
+})();
 </script>
 
 </body>

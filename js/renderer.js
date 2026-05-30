@@ -100,7 +100,10 @@ class ChartRenderer {
 
     // --- Draw candles ---
     if (allCandles.length > 0) {
-      const candleW = Math.max(2, Math.floor(chartW / Math.max(allCandles.length, 1)));
+      // Enforce a minimum slot count so early candles don't stretch across the full chart
+      const MIN_SLOTS = 30;
+      const slotCount = Math.max(allCandles.length, MIN_SLOTS);
+      const candleW = Math.max(2, Math.floor(chartW / slotCount));
       const gap = Math.max(1, Math.floor(candleW * 0.15));
       const bodyW = Math.max(1, candleW - gap * 2);
 

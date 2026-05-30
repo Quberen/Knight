@@ -313,9 +313,22 @@ html, body {
 }
 
 #btn-buy { color: var(--green); border-color: rgba(0,200,120,0.3); }
-#btn-buy:hover { background: rgba(0,200,120,0.12); }
+#btn-buy:hover:not(:disabled) { background: rgba(0,200,120,0.12); }
 #btn-sell { color: var(--red); border-color: rgba(255,58,92,0.3); }
-#btn-sell:hover { background: rgba(255,58,92,0.12); }
+#btn-sell:hover:not(:disabled) { background: rgba(255,58,92,0.12); }
+
+.dir-inactive {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.dir-selected#btn-buy {
+  background: rgba(0,200,120,0.2);
+  border-color: var(--green);
+}
+.dir-selected#btn-sell {
+  background: rgba(255,58,92,0.2);
+  border-color: var(--red);
+}
 
 .shop-row {
   display: flex;
@@ -702,4 +715,47 @@ html, body {
   #main { grid-template-columns: 0 1fr 38px; }
   #left-col { display: none; }
   #bottom { grid-template-columns: 60px 1fr 76px; }
+}
+
+/* Landscape phone — short viewport */
+@media (max-height: 500px) and (orientation: landscape) {
+  #app {
+    grid-template-rows: 28px 1fr 0px 120px;
+  }
+
+  #news-bar { display: none; }
+
+  #main {
+    grid-template-columns: 0 1fr 38px;
+  }
+
+  #left-col { display: none; }
+
+  #emotion-layer { height: 70px; }
+
+  .ecol-label { font-size: 7px; }
+  .ecol-value { font-size: 10px; }
+  .ecol-sub   { display: none; }
+
+  #bottom {
+    grid-template-columns: 60px 1fr 76px;
+  }
+
+  #resource-col {
+    gap: 3px;
+    padding: 4px 6px;
+  }
+
+  .res-bar-wrap { height: 3px; }
+
+  .op-btn {
+    min-height: 36px;
+    min-width: 56px;
+    font-size: 10px;
+    padding: 3px 5px;
+  }
+
+  #debug-panel {
+    width: 260px;
+  }
 }
