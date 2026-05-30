@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0d1117">
+  <title>炒作模拟器 // HYPE ENGINE</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ======================================================
+       HEADER
+       ====================================================== -->
+  <header id="header">
+    <span id="header-asset">狗头徽章</span>
+    <span id="price-header">$100.00</span>
+    <span id="day-label">预热期 D1</span>
+    <button id="debug-toggle-btn">DEBUG</button>
+  </header>
+
+  <!-- ======================================================
+       MAIN AREA
+       ====================================================== -->
+  <main id="main">
+
+    <!-- Left column: news + empty slot -->
+    <div id="left-col">
+      <div id="news-section">
+        <div class="section-label">NEWS SECTION // SUBSYSTEM A</div>
+        <div id="news-panel">
+          <div class="news-empty">— 暂无新闻 —</div>
+        </div>
+      </div>
+      <div id="empty-slot">
+        <span class="empty-label">EMPTY SLOT</span>
+      </div>
+    </div>
+
+    <!-- Centre: chart + emotion layer -->
+    <div id="centre-col">
+      <div id="chart-wrap">
+        <canvas id="chart-canvas"></canvas>
+      </div>
+
+      <!-- Emotion state (E-Layer) -->
+      <div id="emotion-layer">
+        <div class="emotion-header">EMOTION STATE // E-LAYER</div>
+        <div class="emotion-cols">
+          <div class="emotion-col">
+            <div class="ecol-label">Valence<br>(E)</div>
+            <div class="ecol-value" id="e-val">0.0%</div>
+            <div class="ecol-sub">情绪</div>
+          </div>
+          <div class="emotion-col">
+            <div class="ecol-label">Momentum<br>(M)</div>
+            <div class="ecol-value" id="m-val">0.0000</div>
+            <div class="ecol-sub">动能</div>
+          </div>
+          <div class="emotion-col">
+            <div class="ecol-label">Rev.Mom<br>(R)</div>
+            <div class="ecol-value" id="r-val">0.0000</div>
+            <div class="ecol-sub">回调力</div>
+          </div>
+          <div class="emotion-col">
+            <div class="ecol-label">Regress<br>Press.</div>
+            <div class="ecol-value" id="rp-val">0.0%</div>
+            <div id="r-active-label">STANDBY</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right column: time view selector -->
+    <div id="right-col">
+      <button class="view-btn active" data-view="6H">6H</button>
+      <button class="view-btn" data-view="1D">1D</button>
+      <button class="view-btn" data-view="1W">1W</button>
+    </div>
+
+  </main>
+
+  <!-- ======================================================
+       NEWS BAR (ticker)
+       ====================================================== -->
+  <div id="news-bar">
+    <span class="news-ticker-label">▶ NEWS</span>
+    <div id="news-ticker-scroll">
+      <span class="news-item-ticker">系统启动中 — 等待市场数据...</span>
+    </div>
+  </div>
+
+  <!-- ======================================================
+       BOTTOM AREA
+       ====================================================== -->
+  <div id="bottom">
+
+    <!-- Buy / Sell / Shop -->
+    <div id="buy-sell-col">
+      <button class="dir-btn" id="btn-buy">→ 做多</button>
+      <button class="dir-btn" id="btn-sell">← 做空</button>
+      <div class="shop-row">🔔 SHOP</div>
+    </div>
+
+    <!-- Operations -->
+    <div id="ops-col">
+      <div id="ops-panel" style="display:contents;"></div>
+    </div>
+
+    <!-- Resources -->
+    <div id="resource-col">
+      <div class="res-row">
+        <div class="res-label">USD</div>
+        <div class="res-value" id="usd-val">$0</div>
+      </div>
+      <div class="res-row">
+        <div class="res-label">行动点 AP</div>
+        <div class="ap-display"><span id="ap-val">5</span>/<span id="ap-max">5</span></div>
+      </div>
+      <div class="res-row">
+        <div class="res-label">Trust</div>
+        <div class="res-bar-wrap"><div class="res-bar" id="trust-bar" style="width:30%"></div></div>
+      </div>
+      <div class="res-row">
+        <div class="res-label">Heat</div>
+        <div class="res-bar-wrap"><div class="res-bar" id="heat-bar" style="width:10%"></div></div>
+      </div>
+      <div class="res-row">
+        <div class="res-label">受众</div>
+        <div style="font-size:10px;color:var(--dim)">
+          <span id="audience-val">100</span>/<span id="max-audience-val">10,000</span>
+        </div>
+      </div>
+      <div class="res-row">
+        <div class="res-label">监管 <span id="reg-val" style="color:#f80;font-size:9px"></span></div>
+        <div class="res-bar-wrap"><div class="res-bar" id="reg-bar" style="width:0%;background:#f80"></div></div>
+      </div>
+      <div class="res-row">
+        <div class="res-label">信心 <span id="conf-val" style="font-size:9px;color:var(--green)"></span></div>
+        <div class="res-bar-wrap"><div class="res-bar" id="conf-bar" style="width:100%"></div></div>
+      </div>
+      <div class="res-row">
+        <div class="res-label">收割 <span id="harvest-val" style="font-size:9px;color:var(--amber)"></span></div>
+        <div class="res-bar-wrap"><div class="res-bar" id="harvest-bar" style="width:0%"></div></div>
+      </div>
+    </div>
+
+  </div>
+
+</div><!-- /#app -->
+
+
+<!-- ======================================================
+     DEBUG PANEL (slides in from right)
+     ====================================================== -->
+<div id="debug-panel">
+  <div id="debug-header">DEBUG PANEL // EMOTION STATE PARAMETERS</div>
+  <div id="debug-scrollable">
+    <div class="debug-section-title">参数调节</div>
+    <div id="debug-sliders"></div>
+    <div class="debug-section-title">实时状态</div>
+    <div id="debug-state"></div>
+    <button id="debug-export">导出参数 JSON</button>
+  </div>
+</div>
+
+
+<!-- ======================================================
+     GAME OVER / VICTORY OVERLAY
+     ====================================================== -->
+<div id="game-overlay">
+  <div class="overlay-box">
+    <div id="overlay-title">游戏结束</div>
+    <div id="overlay-body"></div>
+    <button id="overlay-btn">重新开始</button>
+  </div>
+</div>
+
+
+<!-- Scripts (load order matters) -->
+<script src="js/params.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/candle.js"></script>
+<script src="js/renderer.js"></script>
+<script src="js/events.js"></script>
+<script src="js/gameloop.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+
+<script>
+// News ticker DOM updater
+(function() {
+  function updateTicker() {
+    const scroll = document.getElementById('news-ticker-scroll');
+    if (window._eventSystem && window._eventSystem.recentEvents.length) {
+      scroll.innerHTML = window._eventSystem.recentEvents.slice(0, 5)
+        .map(e => '<span class="news-item-ticker">' + e.text + '</span>').join('');
+    }
+    setTimeout(updateTicker, 3000);
+  }
+  setTimeout(updateTicker, 2000);
+})();
+
+// Direction buttons
+document.getElementById('btn-buy').addEventListener('click', function() {
+  if (window._gameLoop) window._gameLoop.direction = 'LONG';
+  this.style.borderColor = 'var(--green)';
+  setTimeout(() => this.style.borderColor = '', 500);
+});
+document.getElementById('btn-sell').addEventListener('click', function() {
+  if (window._gameLoop) window._gameLoop.direction = 'SHORT';
+  this.style.borderColor = 'var(--red)';
+  setTimeout(() => this.style.borderColor = '', 500);
+});
+</script>
+
+</body>
+</html>
