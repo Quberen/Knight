@@ -101,9 +101,10 @@ html, body {
 #main {
   grid-area: main;
   display: grid;
-  grid-template-columns: 110px 1fr 50px;
+  grid-template-columns: 110px minmax(0, 1fr) 50px;
   grid-template-rows: 1fr;
   min-height: 0;
+  overflow: hidden;
 }
 
 /* Left column: news + empty slot */
@@ -148,10 +149,16 @@ html, body {
   flex: 1;
   position: relative;
   min-height: 0;
+  min-width: 0;
+  overflow: hidden;
   background: var(--bg);
 }
 
+/* Absolutely positioned so the canvas drawing-buffer size can never
+   feed back into grid/flex sizing and cause horizontal overflow. */
 #chart-canvas {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
@@ -718,7 +725,7 @@ html, body {
 }
 
 /* Landscape phone — short viewport */
-@media (max-height: 500px) and (orientation: landscape) {
+@media (max-height: 600px) and (orientation: landscape) {
   #app {
     grid-template-rows: 28px 1fr 0px 120px;
   }

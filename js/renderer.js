@@ -55,13 +55,23 @@ class ChartRenderer {
   }
 
   _resize() {
+    // Re-read dpr in case the window moved to another display
+    this.dpr = window.devicePixelRatio || 1;
     const dpr = this.dpr;
     const rect = this.canvas.getBoundingClientRect();
-    this.canvas.width = rect.width * dpr;
-    this.canvas.height = rect.height * dpr;
-    this.ctx.scale(dpr, dpr);
-    this.W = rect.width;
-    this.H = rect.height;
+    const w = Math.max(0, Math.round(rect.width));
+    const h = Math.max(0, Math.round(rect.height));
+
+    // Avoid redundant buffer churn (ResizeObserver can fire repeatedly)
+    const bufW = w * dpr;
+    const bufH = h * dpr;
+    if (this.canvas.width !== bufW) this.canvas.width = bufW;
+    if (this.canvas.height !== bufH) this.canvas.height = bufH;
+
+    // setTransform (not scale) so this is idempotent and never compounds
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.W = w;
+    this.H = h;
   }
 
   // ============================================================
