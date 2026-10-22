@@ -1,0 +1,9 @@
+{
+  "name": "墨影骑士 Ink Knight",
+  "short_name": "墨影骑士",
+  "start_url": ".",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#e9e5db",
+  "theme_color": "#e9e5db"
+}
