@@ -25,75 +25,56 @@ const gesture = (steps) => page.evaluate(async (steps) => {
   }
 }, steps);
 const tap = (x, y) => gesture([[0, 'pointerdown', x, y], [60, 'pointerup', x, y]]);
-const drag = (x0, dx, ms) => {
-  const s = [[0, 'pointerdown', x0, 600]];
-  const n = Math.max(2, Math.round(ms / 16));
-  for (let i = 1; i <= n; i++) s.push([16, 'pointermove', x0 + Math.min(1, i / 4) * dx, 600]);
-  s.push([16, 'pointerup', x0 + dx, 600]);
-  return gesture(s);
-};
-const flick = (x, y, dx, dy) => gesture([
-  [0, 'pointerdown', x, y], [16, 'pointermove', x + dx * 0.3, y + dy * 0.3],
-  [16, 'pointermove', x + dx * 0.7, y + dy * 0.7], [16, 'pointermove', x + dx, y + dy], [10, 'pointerup', x + dx, y + dy],
-]);
 const state = () => page.evaluate(() => {
   const g = window.game, p = g.player;
-  return { state: g.state, room: g.room.id, x: Math.round(p.cx), y: Math.round(p.cy), hp: p.hp, ink: p.ink, grounded: p.grounded, atk: !!p.atk, vy: Math.round(p.vy) };
+  return { state: g.state, room: g.room.id, x: Math.round(p.cx), y: Math.round(p.cy), hp: p.hp, cmd: g.pilot.cmd?.kind ?? null };
 });
 
 await tap(200, 400); // 开始
 await page.waitForTimeout(300);
 console.log('start', await state());
 
-await drag(200, 40, 500);
-await page.waitForTimeout(100);
-console.log('after drag right', await state());
+// 点高处平台：截一张寻路途中的图
+const [px, py] = await page.evaluate(() => window.game.worldToScreen(8 * 16 + 8, 17 * 16 + 8));
+await tap(px, py);
+await page.waitForTimeout(350);
+await page.screenshot({ path: `${out}/1-goto.png` });
+await page.waitForTimeout(1500);
+console.log('after tap platform', await state());
 
-await flick(200, 600, 0, -60);
-await page.waitForTimeout(120);
-console.log('after flick up (jump)', await state());
-await page.waitForTimeout(600);
-
-await tap(100, 600);
-await page.waitForTimeout(30);
-console.log('after tap left (attack)', await state());
-await page.waitForTimeout(300);
-await page.screenshot({ path: `${out}/1-cradle.png` });
-
-// 长按 → 蓄力环截图 → 松开 = 重击
+// 长按 → 蓄力环
 await gesture([[0, 'pointerdown', 200, 600]]);
-await page.waitForTimeout(650);
+await page.waitForTimeout(450);
 await page.screenshot({ path: `${out}/2-charge.png` });
 await gesture([[0, 'pointerup', 200, 600]]);
-await page.waitForTimeout(50);
-console.log('after heavy', await state());
+await page.waitForTimeout(300);
 
-// 双指轻点 → 地图
-await gesture([[0, 'pointerdown', 150, 500, 7], [20, 'pointerdown', 250, 500, 8], [60, 'pointerup', 150, 500, 7], [20, 'pointerup', 250, 500, 8]]);
+// 双指按住 → 凝神（连线 + 凝神圈）
+await gesture([[0, 'pointerdown', 140, 560, 5], [20, 'pointerdown', 260, 560, 6]]);
+await page.waitForTimeout(500);
+await page.screenshot({ path: `${out}/3-focus.png` });
+await gesture([[0, 'pointerup', 140, 560, 5], [0, 'pointerup', 260, 560, 6]]);
+
+// 三指轻点 → 地图
+await gesture([[0, 'pointerdown', 120, 500, 7], [20, 'pointerdown', 200, 500, 8], [20, 'pointerdown', 280, 500, 9],
+  [60, 'pointerup', 120, 500, 7], [10, 'pointerup', 200, 500, 8], [10, 'pointerup', 280, 500, 9]]);
 await page.waitForTimeout(100);
-console.log('two-finger tap', (await state()).state);
-await page.screenshot({ path: `${out}/3-map.png` });
+console.log('three-finger tap', (await state()).state);
+await page.screenshot({ path: `${out}/4-map.png` });
 await tap(200, 400);
 await page.waitForTimeout(100);
 
-// 画圈识别（未解锁时不消耗，只检查识别器）
-const circled = await page.evaluate(async () => {
-  const g = window.game, c = document.getElementById('game');
-  const evs = [];
-  const orig = g.input.emit.bind(g.input);
-  g.input.emit = (e) => { evs.push(e.type + (e.dir ? ':' + e.dir : '')); orig(e); };
-  const send = (type, x, y) => c.dispatchEvent(new PointerEvent(type, { pointerId: 3, clientX: x, clientY: y, bubbles: true, pointerType: 'touch' }));
-  send('pointerdown', 200 + 50, 500);
-  for (let i = 1; i <= 26; i++) {
-    await new Promise(r => setTimeout(r, 16));
-    const a = i / 24 * Math.PI * 2;
-    send('pointermove', 200 + Math.cos(a) * 50, 500 + Math.sin(a) * 50);
-  }
-  send('pointerup', 250, 500);
-  g.input.emit = orig;
-  return evs;
+// 长廊：点敌人 → 锁定追击
+await page.evaluate(() => { const p = window.game.player; p.x = 14 * 16; p.y = 21 * 16 - 14 + 16; p.vx = p.vy = 0; });
+await page.waitForTimeout(700);
+await page.evaluate(() => {
+  const g = window.game;
+  const e = g.enemies.find(e => g.world.roomAtPx(e.cx, e.cy) === g.room);
+  g.command(...g.worldToScreen(e.cx, e.cy), false);
 });
-console.log('circle gesture events', circled);
+await page.waitForTimeout(500);
+await page.screenshot({ path: `${out}/5-engage.png` });
+console.log('engage', await state());
 
 // 传送到各房间截图
 for (const [id, tx, ty] of [['hall', 18, 21], ['shaft', 41, 33], ['tower', 77, 40], ['gallery', 60, 21]]) {
@@ -102,7 +83,7 @@ for (const [id, tx, ty] of [['hall', 18, 21], ['shaft', 41, 33], ['tower', 77, 4
   }, [tx, ty]);
   await page.waitForTimeout(700);
   console.log('teleport', id, (await state()).room);
-  await page.screenshot({ path: `${out}/4-${id}.png` });
+  await page.screenshot({ path: `${out}/6-${id}.png` });
 }
 
 console.log(errors.length ? 'ERRORS:\n' + errors.join('\n') : 'no page errors');

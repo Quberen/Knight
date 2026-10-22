@@ -8,6 +8,10 @@ const FONT = '"PingFang SC","Hiragino Sans GB","Noto Sans SC","Microsoft YaHei",
 export function drawHUD(ctx, g, W, H, safeTop) {
   const p = g.player;
   const top = safeTop + 14;
+  // 纸色底板：HUD 下面可能是墨色的房间外区域
+  ctx.fillStyle = 'rgba(233,229,219,0.88)';
+  roundRect(ctx, 8, top - 6, 58 + p.maxHp * 17 - 4, 44, 22);
+  ctx.fill();
   // 墨瓶
   const vx = 30, vy = top + 16, vr = 15;
   ctx.save();
@@ -126,45 +130,60 @@ export function drawToasts(ctx, g, W, H) {
   }
 }
 
-// 手势反馈：轨迹残影、蓄力环、拖动锚点
+// 手势反馈：轨迹残影、长按蓄力环、双指连线（凝神 / 拧转进度）
 export function drawGestures(ctx, input) {
   const now = performance.now();
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  const trail = (pts, alpha) => {
-    if (pts.length < 2) return;
-    ctx.strokeStyle = `rgba(17,17,17,${alpha})`;
-    ctx.lineWidth = 3;
+  for (const tr of input.trails) {
+    const pts = tr.pts;
+    if (pts.length < 2) continue;
+    ctx.strokeStyle = `rgba(17,17,17,${0.25 * (1 - (now - tr.t) / 260)})`;
+    ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
     for (const p of pts) ctx.lineTo(p.x, p.y);
     ctx.stroke();
-  };
-  for (const tr of input.trails) trail(tr.pts, 0.22 * (1 - (now - tr.t) / 260));
-  for (const t of input.touches.values()) {
-    if (t.state === 'steer') {
-      trail(t.full.filter(p => now - p.t < 200), 0.18);
-      ctx.fillStyle = 'rgba(17,17,17,0.12)';
-      ctx.beginPath(); ctx.arc(t.ax, t.y0, 22, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = 'rgba(17,17,17,0.3)';
-      ctx.beginPath(); ctx.arc(t.x, t.y, 9, 0, Math.PI * 2); ctx.fill();
-    }
   }
   for (const c of input.charges()) {
-    const k1 = Math.min(1, (c.held - CFG.chargeShow) / (CFG.heavyTime - CFG.chargeShow));
-    const k2 = Math.max(0, Math.min(1, (c.held - CFG.heavyTime) / (CFG.focusTime - CFG.heavyTime)));
+    if (c.held < 120) continue;
+    const k = Math.min(1, (c.held - 120) / (CFG.holdTime - 120));
     ctx.lineWidth = 4;
     ctx.strokeStyle = 'rgba(17,17,17,0.15)';
-    ctx.beginPath(); ctx.arc(c.x, c.y, 34, 0, Math.PI * 2); ctx.stroke();
-    ctx.strokeStyle = k1 >= 1 ? INK : 'rgba(17,17,17,0.6)';
-    ctx.beginPath(); ctx.arc(c.x, c.y, 34, -Math.PI / 2, -Math.PI / 2 + k1 * Math.PI * 2); ctx.stroke();
-    if (k2 > 0) {
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = 'rgba(17,17,17,0.7)';
-      ctx.beginPath(); ctx.arc(c.x, c.y, 44, -Math.PI / 2, -Math.PI / 2 + k2 * Math.PI * 2); ctx.stroke();
-    }
-    if (k1 >= 1) {
+    ctx.beginPath(); ctx.arc(c.x, c.y, 32, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = k >= 1 ? INK : 'rgba(17,17,17,0.6)';
+    ctx.beginPath(); ctx.arc(c.x, c.y, 32, -Math.PI / 2, -Math.PI / 2 + k * Math.PI * 2); ctx.stroke();
+    if (k >= 1) {
       ctx.fillStyle = INK;
-      ctx.beginPath(); ctx.arc(c.x, c.y, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.font = `600 12px ${FONT}`; ctx.textAlign = 'center';
+      ctx.fillText('重击', c.x, c.y - 42);
+    }
+  }
+  for (const pr of input.pairs()) {
+    const { a, b } = pr;
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    ctx.strokeStyle = 'rgba(17,17,17,0.25)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 6]);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    ctx.setLineDash([]);
+    for (const t of [a, b]) {
+      ctx.fillStyle = 'rgba(17,17,17,0.3)';
+      ctx.beginPath(); ctx.arc(t.x, t.y, 12, 0, Math.PI * 2); ctx.fill();
+    }
+    // 拧转进度
+    const k = Math.min(1, Math.abs(pr.rot) / CFG.twistAngle);
+    if (k > 0.15) {
+      ctx.strokeStyle = INK; ctx.lineWidth = 3;
+      const r = 40;
+      const a0 = -Math.PI / 2;
+      ctx.beginPath(); ctx.arc(mx, my, r, a0, a0 + Math.sign(pr.rot) * k * Math.PI * 2, pr.rot < 0); ctx.stroke();
+    }
+    if (pr.focus) {
+      const r = 24 + Math.sin(now / 120) * 3;
+      ctx.strokeStyle = INK; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(mx, my, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = INK; ctx.font = `600 12px ${FONT}`; ctx.textAlign = 'center';
+      ctx.fillText('凝神', mx, my - 34);
     }
   }
 }
@@ -182,7 +201,7 @@ export function drawMap(ctx, g, W, H, safeTop) {
   ctx.fillText('地 图', W / 2, safeTop + 50);
   ctx.font = `12px ${FONT}`;
   ctx.fillStyle = 'rgba(17,17,17,0.6)';
-  ctx.fillText('双指轻点 关闭', W / 2, safeTop + 70);
+  ctx.fillText('轻点关闭', W / 2, safeTop + 70);
 
   const benches = g.world.spawns.filter(s => s.type === 'B');
   for (const r of w.rooms) {
@@ -209,14 +228,16 @@ export function drawMap(ctx, g, W, H, safeTop) {
   // 能力一览
   const ab = g.save.abilities;
   const lines = [
-    ['挥砍', '轻点（点哪砍哪）', true],
-    ['跳跃', '向上快划', true],
-    ['重击', '长按后松开', true],
-    ['凝神', '长按不放（33 墨）', true],
-    ['下砸', '空中向下快划', true],
-    ['疾影', '左 / 右快划', ab.dash],
-    ['墨旋', '画一个圈', ab.vortex],
-    ['墨弹', '蓄力后甩出', ab.bolt],
+    ['前往', '点地面 / 平台', true],
+    ['攻击', '点敌人（自动追击）', true],
+    ['重击', '长按目标再松开', true],
+    ['闪身', '左 / 右快划', true],
+    ['跳跃', '上划 / 斜上划', true],
+    ['下砸', '空中下划', true],
+    ['凝神', '双指按住（33 墨）', true],
+    ['疾影', '冲刺更远 · 自动冲刺跳', ab.dash],
+    ['墨旋', '双指拧转', ab.vortex],
+    ['墨弹', '双指一起划', ab.bolt],
   ];
   let y = oy + ch * w.cellsH + 40;
   ctx.textAlign = 'left';
@@ -255,7 +276,7 @@ export function drawTitle(ctx, W, H, t) {
   ctx.fillText('轻点开始', W / 2, H * 0.68);
   ctx.globalAlpha = 0.5;
   ctx.font = `12px ${FONT}`;
-  ctx.fillText('全程手势操作 · 建议竖屏', W / 2, H * 0.68 + 26);
+  ctx.fillText('点哪去哪 · 点谁打谁', W / 2, H * 0.68 + 26);
   ctx.globalAlpha = 1;
 }
 

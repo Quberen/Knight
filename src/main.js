@@ -1,7 +1,9 @@
 // 入口：循环、相机、存档、实体管理
 import { World, T } from './world.js';
 import { Gestures } from './input.js';
-import { Player } from './player.js';
+import { Player, PLAYER_CFG } from './player.js';
+import { Nav } from './nav.js';
+import { Pilot } from './pilot.js';
 import { makeEnemy } from './enemies.js';
 import { FX, INK, PAPER } from './fx.js';
 import { overlap } from './physics.js';
@@ -32,6 +34,9 @@ class Game {
     for (const k of this.save.broken) { const [x, y] = k.split(',').map(Number); this.world.breakWall(x, y); }
     this.tiles = buildTileCache(this.world);
 
+    this.nav = new Nav(this.world, this.save.abilities);
+    this.pilot = new Pilot(this);
+    this.marks = [];   // 点击反馈（目的地墨圈）
     this.player = new Player(0, 0);
     this.player.maxHp = this.save.maxHp;
     this.player.hp = this.player.maxHp;
@@ -96,6 +101,7 @@ class Game {
     this.player.reset(at.x, at.y);
     this.player.hp = this.player.maxHp;
     this.resetEnemies();
+    this.pilot?.cancel();
     this.room = this.world.roomAtPx(this.player.cx, this.player.cy);
     this.visit(this.room, !first);
     this.snapCamera();
@@ -158,6 +164,7 @@ class Game {
       this.fx.ink(x * T + T / 2, y * T + T / 2, 10, 160);
     }
     this.writeSave();
+    this.nav.invalidate();
     repaintTiles(this.tiles, this.world, x0, y0, x1, y1);
     this.fx.shake(5, 0.3); this.fx.flash(0.08);
     this.hitstop(0.1);
@@ -186,18 +193,18 @@ class Game {
 
   tick(dt) {
     const input = this.input;
-    input.update(this.player.canFocus());
+    input.update();
     const events = input.poll();
 
     if (this.state === 'title') {
-      if (events.some(e => e.type === 'tap' || e.type === 'heavy' || e.type === 'keyAttack' || e.type === 'flick')) {
+      if (events.some(e => e.type === 'tap' || e.type === 'heavy' || e.type === 'key')) {
         this.state = 'play';
         this.roomBanner = { name: this.room.name, t: 0 };
       }
       return;
     }
     if (this.state === 'map') {
-      if (events.some(e => e.type === 'twoTap' || e.type === 'tap')) this.state = 'play';
+      if (events.some(e => e.type === 'map' || e.type === 'tap' || (e.type === 'key' && e.act === 'map'))) this.state = 'play';
       return;
     }
 
@@ -211,15 +218,23 @@ class Game {
       if (this.fade.a <= 0) { this.fade.a = 0; this.fade.dir = 0; }
     }
 
-    if (this.hitstopT > 0) { this.hitstopT -= dt; return; }
-
-    for (const ev of events) {
-      if (ev.type === 'twoTap') { this.state = 'map'; return; }
-      if (!this.dead) this.player.handle(ev, this);
-    }
+    // 顿帧期间输入不丢，留到下一帧
+    if (this.hitstopT > 0) { this.hitstopT -= dt; input.queue.unshift(...events); return; }
 
     const p = this.player;
-    if (!this.dead) p.update(dt, this);
+    for (const ev of events) {
+      if (ev.type === 'map' || (ev.type === 'key' && ev.act === 'map')) { this.state = 'map'; return; }
+      if (!this.dead && p.frozen <= 0) this.handle(ev);
+    }
+
+    if (!this.dead) {
+      this.pilot.update(dt);
+      const k = input.keyAxis();
+      if (k) { this.pilot.cancel(); p.ctrlVx = k * PLAYER_CFG.run; }
+      p.update(dt, this);
+    }
+    for (const m of this.marks) m.t += dt;
+    this.marks = this.marks.filter(m => m.t < 0.6);
 
     // 只更新当前房间附近的敌人
     for (const e of this.enemies) {
@@ -241,6 +256,92 @@ class Game {
     this.fx.update(dt, this.world);
     this.updateCamera(dt);
   }
+
+  // ---------- 手势 → 指令 / 动作 ----------
+  handle(ev) {
+    const p = this.player, pilot = this.pilot;
+    switch (ev.type) {
+      case 'tap': return this.command(ev.x, ev.y, false);
+      case 'heavy': return this.command(ev.x, ev.y, true);
+      case 'swipe':
+        pilot.cancel();
+        if (ev.dir === 'up') {
+          p.jump();
+          // 斜上划：跳向那一侧，空中保持
+          if (Math.abs(ev.dx) > 0.3) { pilot.manualVx = Math.sign(ev.dx) * PLAYER_CFG.run; pilot.manualT = 0; }
+        } else if (ev.dir === 'down') p.down(this);
+        else p.dash(this, ev.dir === 'left' ? -1 : 1);
+        return;
+      case 'twist':
+        if (!this.save.abilities.vortex) return this.hintOnce('novortex', '尚未掌握「墨旋」');
+        return p.vortex(this);
+      case 'bolt':
+        if (!this.save.abilities.bolt) return this.hintOnce('nobolt', '尚未掌握「墨弹」');
+        return p.bolt(this, ev.dx, ev.dy);
+      case 'twoTap':
+        return this.hintOnce('twotap', '双指按住凝神 · 拧转墨旋 · 一起划墨弹');
+      case 'key': {
+        const d = p.facing > 0 ? 'right' : 'left';
+        const a = ev.act;
+        if (a === 'jump') { pilot.cancel(); p.jump(); }
+        if (a === 'down') { pilot.cancel(); p.down(this); }
+        if (a === 'dash') { pilot.cancel(); p.dash(this, p.facing); }
+        if (a === 'attack') p.attack(this, this.input.keys.has('ArrowUp') ? 'up' : !p.grounded && this.input.keys.has('ArrowDown') ? 'down' : d, false);
+        if (a === 'heavy') p.attack(this, d, true);
+        if (a === 'twist') this.handle({ type: 'twist' });
+        if (a === 'bolt') this.handle({ type: 'bolt', dx: p.facing, dy: 0 });
+        return;
+      }
+    }
+  }
+
+  // 轻点 / 长按松开：先看点到了什么
+  command(sx, sy, heavy) {
+    const [wx, wy] = this.screenToWorld(sx, sy);
+    const p = this.player, pilot = this.pilot;
+    // 敌人（判定范围放宽，手指比敌人大）
+    let enemy = null, ed = 22;
+    for (const e of this.enemies) {
+      if (e.dead || this.world.roomAtPx(e.cx, e.cy) !== this.room) continue;
+      const d = Math.hypot(e.cx - wx, e.cy - wy);
+      if (d < ed) { ed = d; enemy = e; }
+    }
+    if (enemy) {
+      pilot.engage(enemy, heavy);
+      this.marks.push({ x: enemy.cx, y: enemy.cy, t: 0, kind: 'target' });
+      return;
+    }
+    // 裂墙
+    const tx = Math.floor(wx / T), ty = Math.floor(wy / T);
+    for (const [x, y] of [[tx, ty], [tx - 1, ty], [tx + 1, ty], [tx, ty - 1], [tx, ty + 1]]) {
+      if (this.world.tile(x, y) !== 'X') continue;
+      const tiles = [];
+      for (let yy = y - 4; yy <= y + 4; yy++) for (let xx = x - 2; xx <= x + 2; xx++) if (this.world.tile(xx, yy) === 'X') tiles.push([xx, yy]);
+      pilot.engage({ kind: 'wall', tiles }, heavy);
+      this.marks.push({ x: x * T + T / 2, y: y * T + T / 2, t: 0, kind: 'target' });
+      return;
+    }
+    // 长椅
+    const bench = this.world.spawns.find(s => s.type === 'B' && Math.abs(s.x - wx) < 18 && Math.abs(s.y - 8 - wy) < 18);
+    if (bench && !heavy) {
+      pilot.goto(bench.x, bench.y - 4, () => this.rest(bench));
+      this.marks.push({ x: bench.x, y: bench.y - 4, t: 0, kind: 'go' });
+      return;
+    }
+    // 长按空地：原地朝那边重击
+    if (heavy) {
+      pilot.cancel();
+      const dir = Math.abs(wy - p.cy) > Math.abs(wx - p.cx) * 1.2 && wy < p.cy ? 'up' : wx < p.cx ? 'left' : 'right';
+      p.attack(this, dir, true);
+      return;
+    }
+    if (pilot.goto(wx, wy)) {
+      const g = pilot.cmd?.goal;
+      if (g) this.marks.push({ x: wx, y: (g[1] + 1) * T, t: 0, kind: 'go' });
+    }
+  }
+
+  toastMsg(text) { this.toast = { text, t: 0 }; }
 
   updateBolts(dt) {
     for (const b of this.bolts) {
@@ -294,7 +395,7 @@ class Game {
       const box = { x: s.x - 7, y: s.y - 18, w: 14, h: 14 };
       if (!overlap(p, box)) continue;
       this.save.got.push(s.id);
-      if (item.ability) this.save.abilities[item.ability] = true;
+      if (item.ability) { this.save.abilities[item.ability] = true; this.nav.invalidate(); }
       if (s.type === 'H') { this.save.maxHp++; p.maxHp = this.save.maxHp; p.hp = p.maxHp; }
       if (item.ability !== 'dash') p.ink = 99;
       this.writeSave();
@@ -349,6 +450,7 @@ class Game {
     this.drawProps(b);
     for (const e of this.enemies) if (!e.dead) e.draw(b);
     if (!this.dead) this.player.draw(b);
+    this.drawPilot(b);
     this.drawSkills(b);
     this.fx.draw(b);
 
@@ -407,6 +509,40 @@ class Game {
         b.fillStyle = PAPER;
         b.beginPath(); b.arc(x - 1, y - 1, 1.2, 0, Math.PI * 2); b.fill();
       }
+    }
+  }
+
+  // 指令反馈：目的地墨圈、锁定准星、路径点
+  drawPilot(b) {
+    const t = this.time;
+    for (const m of this.marks) {
+      const k = m.t / 0.6;
+      b.strokeStyle = `rgba(17,17,17,${1 - k})`;
+      b.lineWidth = 1.5 * (1 - k) + 0.5;
+      b.beginPath();
+      if (m.kind === 'go') b.ellipse(m.x, m.y - 1, 3 + k * 10, 1.5 + k * 3, 0, 0, Math.PI * 2);
+      else b.arc(m.x, m.y, 18 - k * 8, 0, Math.PI * 2);
+      b.stroke();
+    }
+    const cmd = this.pilot.cmd;
+    if (!cmd) return;
+    b.fillStyle = 'rgba(17,17,17,0.35)';
+    for (let i = this.pilot.idx; i < this.pilot.edges.length; i++) {
+      const e = this.pilot.edges[i];
+      if (e.type === 'walk' && i < this.pilot.edges.length - 1 && this.pilot.edges[i + 1].type === 'walk') continue;
+      b.beginPath(); b.arc(e.x * T + T / 2, (e.y + 1) * T - 2, e.type === 'walk' ? 1 : 1.6, 0, Math.PI * 2); b.fill();
+    }
+    if (cmd.kind === 'engage' && cmd.target.cx !== undefined && !cmd.target.dead) {
+      const e = cmd.target, r = Math.max(e.w, e.h) * 0.8 + 4;
+      b.strokeStyle = INK; b.lineWidth = 1;
+      for (let i = 0; i < 4; i++) {
+        const a = t * 2 + i * Math.PI / 2;
+        b.beginPath(); b.arc(e.cx, e.cy, r, a, a + 0.8); b.stroke();
+      }
+    } else if (cmd.kind === 'goto') {
+      const [gx, gy] = cmd.goal;
+      b.strokeStyle = 'rgba(17,17,17,0.5)'; b.lineWidth = 1;
+      b.beginPath(); b.ellipse(gx * T + T / 2, (gy + 1) * T - 1, 5 + Math.sin(t * 6), 2, 0, 0, Math.PI * 2); b.stroke();
     }
   }
 

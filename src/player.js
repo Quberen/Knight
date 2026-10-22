@@ -7,7 +7,7 @@ const P = {
   run: 100, accelGround: 1500, accelAir: 1000,
   grav: 1150, fallMult: 1.35, maxFall: 430,
   jumpV: 400, coyote: 0.09, buffer: 0.13,
-  dashV: 350, dashT: 0.18, dashCd: 0.32,
+  dashV: 350, dashT: 0.18, dodgeT: 0.09, dashCd: 0.32,
   plungeV: 560,
   atkT: 0.2, atkCd: 0.27, atkActive: 0.1,
   heavyT: 0.3, heavyActive: 0.12,
@@ -37,6 +37,7 @@ export class Player {
     this.safe = { x: this.x, y: this.y };
     this.anim = 0; this.squash = 0; this.wasGrounded = false;
     this.frozen = 0;
+    this.ctrlVx = 0;
   }
 
   get cx() { return this.x + this.w / 2; }
@@ -44,50 +45,8 @@ export class Player {
 
   canFocus() { return this.grounded && this.ink >= P.skillCost && this.hp < this.maxHp && !this.atk && this.dashT <= 0; }
 
-  // ---------- 手势事件 ----------
-  handle(ev, g) {
-    if (this.stun > 0 || this.frozen > 0) return;
-    switch (ev.type) {
-      case 'flick':
-        if (ev.dir === 'up') this.jumpBuf = P.buffer;
-        else if (ev.dir === 'down') this.down(g);
-        else if (ev.dir === 'left' || ev.dir === 'right' || ev.dir === 'dash') {
-          const d = ev.dir === 'dash' ? this.facing : ev.dir === 'left' ? -1 : 1;
-          this.dash(g, d);
-        }
-        break;
-      case 'tap': {
-        const [wx, wy] = g.screenToWorld(ev.x, ev.y);
-        this.attack(g, this.dirTo(wx, wy), false);
-        break;
-      }
-      case 'keyAttack': {
-        const k = g.input.keys;
-        const dir = (k.has('ArrowUp') || k.has('w')) ? 'up' : ((k.has('ArrowDown') || k.has('s')) && !this.grounded) ? 'down' : (this.facing > 0 ? 'right' : 'left');
-        this.attack(g, dir, false);
-        break;
-      }
-      case 'heavy': {
-        const [wx, wy] = g.screenToWorld(ev.x, ev.y);
-        const d = this.dirTo(wx, wy);
-        this.attack(g, d === 'up' || d === 'down' ? (this.facing > 0 ? 'right' : 'left') : d, true);
-        break;
-      }
-      case 'keyHeavy': this.attack(g, this.facing > 0 ? 'right' : 'left', true); break;
-      case 'bolt': this.bolt(g, ev.dx, ev.dy); break;
-      case 'keyBolt': this.bolt(g, this.facing, 0); break;
-      case 'circle': this.vortex(g); break;
-    }
-  }
-
-  // 点哪砍哪：点在上/下方的锥形区域里就上挑/下劈，否则左右
-  dirTo(wx, wy) {
-    const dx = wx - this.cx, dy = wy - this.cy;
-    if (dy < 0 && -dy > Math.abs(dx) * 1.1) return 'up';
-    if (dy > 0 && dy > Math.abs(dx) * 1.1 && !this.grounded) return 'down';
-    if (Math.abs(dx) < 2) return this.facing > 0 ? 'right' : 'left';
-    return dx > 0 ? 'right' : 'left';
-  }
+  // 动作接口：由 Pilot（指令执行）和 Game（反射类手势）调用
+  jump() { if (this.stun <= 0 && !this.plunging) this.jumpBuf = P.buffer; }
 
   down(g) {
     if (this.grounded) {
@@ -102,11 +61,12 @@ export class Player {
     }
   }
 
+  // 没有「疾影」时是短距离闪身，拿到后是长冲刺
   dash(g, d) {
-    if (!g.save.abilities.dash) { g.hintOnce('nodash', '需要先找到「疾影」'); return; }
-    if (this.dashCd > 0 || (!this.grounded && !this.airDash) || this.plunging) return;
+    if (this.dashCd > 0 || (!this.grounded && !this.airDash) || this.plunging || this.stun > 0) return;
+    const full = g.save.abilities.dash;
     this.facing = d;
-    this.dashT = P.dashT; this.dashCd = P.dashCd;
+    this.dashT = full ? P.dashT : P.dodgeT; this.dashCd = P.dashCd;
     if (!this.grounded) this.airDash = false;
     this.vx = d * P.dashV; this.vy = 0;
     this.atk = null;
@@ -134,11 +94,10 @@ export class Player {
     }
   }
 
-  hitbox() {
-    const a = this.atk;
-    const big = a.heavy ? 1.35 : 1;
+  hitbox(dir = this.atk.dir, heavy = this.atk.heavy) {
+    const big = heavy ? 1.35 : 1;
     const L = 22 * big, W = 18 * big;
-    switch (a.dir) {
+    switch (dir) {
       case 'up': return { x: this.cx - W / 2, y: this.y - L + 4, w: W, h: L };
       case 'down': return { x: this.cx - W / 2, y: this.y + this.h - 4, w: W, h: L };
       case 'left': return { x: this.x - L + 3, y: this.cy - W / 2, w: L, h: W };
@@ -207,17 +166,16 @@ export class Player {
     } else this.focusT = 0;
 
     // 水平
-    const axis = (this.stun > 0 || this.focusing) ? 0 : input.moveAxis;
+    const ctrl = (this.stun > 0 || this.focusing) ? 0 : this.ctrlVx;
     if (this.dashT > 0) {
       this.dashT -= dt;
       this.vy = 0;
       if (this.dashT <= 0) this.vx = this.facing * P.run;
       if (Math.random() < 0.6) g.fx.ink(this.cx - this.facing * 5, this.cy + (Math.random() - 0.5) * 8, 1, 30, { gravity: 0, up: 0, size: 1.2 });
     } else if (this.stun <= 0) {
-      const target = axis * P.run;
       const acc = this.grounded ? P.accelGround : P.accelAir;
-      this.vx = approach(this.vx, target, acc * dt);
-      if (axis && !this.atk) this.facing = axis;
+      this.vx = approach(this.vx, ctrl, acc * dt);
+      if (Math.abs(ctrl) > 5 && !this.atk) this.facing = Math.sign(ctrl);
     } else {
       this.vx = approach(this.vx, 0, 400 * dt);
     }
@@ -296,7 +254,7 @@ export class Player {
     } else if (!a.heavy && !a.clinked && a.dir !== 'down') {
       const tx = Math.floor((a.dir === 'left' ? box.x : a.dir === 'right' ? box.x + box.w : box.x + box.w / 2) / T);
       const ty = Math.floor((a.dir === 'up' ? box.y : box.y + box.h / 2) / T);
-      if (g.world.tile(tx, ty) === 'X') { a.clinked = true; g.fx.ink(tx * T + T / 2, this.cy, 3, 60); g.hintOnce('crack', '裂墙需要重击（长按后松开）'); }
+      if (g.world.tile(tx, ty) === 'X') { a.clinked = true; g.fx.ink(tx * T + T / 2, this.cy, 3, 60); g.hintOnce('crack', '裂墙需要重击：长按裂墙再松开'); }
     }
     // 下劈弹跳：敌人或尖刺
     if (a.dir === 'down' && !a.pogo) {
@@ -347,6 +305,7 @@ export class Player {
       g.fadeTo(() => {
         this.x = this.safe.x; this.y = this.safe.y;
         this.vx = this.vy = 0; this.plunging = false; this.stun = 0;
+        g.pilot.cancel();
       });
     }
   }

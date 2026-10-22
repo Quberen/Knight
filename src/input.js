@@ -1,39 +1,35 @@
-// 手势识别：整屏都是手势区，不用摇杆、不用按钮。
-// 产出两类信息：
-//   1) 持续状态：moveAxis（-1/0/1）、focusing（长按凝神）、可视化用的 touches
-//   2) 离散事件：tap / flick / heavy / bolt / circle / twoTap（用 poll() 取走）
+// 手势识别（第二版）：「指令 + 反射 + 多指」
+//
+// 单指：轻点 = 指令（去哪 / 打谁）；长按松开 = 重击指令；快划 = 反射动作（闪避 / 跳 / 下砸）
+// 双指：按住 = 凝神；拧转 = 墨旋；一起划 = 墨弹
+// 三指：轻点 = 地图
+//
+// 几乎同时按下（multiGap 内）的手指归为一「组」，组的手指数决定是几指手势。
+// 产出离散事件（poll() 取走）和持续状态（focusing）。
 
 export const CFG = {
-  steerStart: 10,      // 位移超过它就进入「拖动」（CSS px）
-  steerDead: 8,        // 拖动死区
-  steerLeash: 46,      // 手指离锚点超过它时锚点跟随（浮动摇杆）
-  flickWindow: 120,    // 快划检测的时间窗（ms）
-  flickDist: 34,       // 时间窗内的最小位移
-  flickMaxTurn: 0.7,   // 时间窗内允许的最大累计转角（弧度），过滤画圈
-  heldFlickGap: 220,   // 按住期间两次快划的最小间隔
-  tapMaxMove: 10,
-  chargeShow: 180,     // 开始显示蓄力环
-  heavyTime: 550,      // 松手算重击的最短按压时间
-  focusTime: 1000,     // 按住超过它开始凝神
-  chargeDrift: 22,     // 蓄力时允许的漂移，超过就转为拖动
-  circleTurn: Math.PI * 1.65,
-  circleMinLen: 130,
-  circleMinSize: 34,
-  circleWindow: 900,
-  twoTapGap: 160,      // 两指按下的最大间隔
-  twoTapMax: 380,
+  multiGap: 140,     // 这段时间内落下的手指算同一组
+  tapMove: 14,       // 轻点允许的最大位移（CSS px）
+  holdTime: 380,     // 超过它松开算长按（重击）
+  swipeDist: 30,     // 快划最小位移
+  swipeTime: 260,    // 快划必须在按下后这么久内完成
+  focusHold: 280,    // 双指按住多久开始凝神
+  focusDrift: 18,    // 凝神时双指允许的漂移
+  twistAngle: 1.0,   // 双指拧转多少弧度触发墨旋（约 57°）
+  boltDist: 45,      // 双指一起划的最小位移
+  boltTime: 320,
+  multiTapMax: 350,  // 多指轻点的最长时间
 };
 
 export class Gestures {
   constructor(el) {
     this.el = el;
-    this.touches = new Map();
+    this.touches = new Map();   // pointerId → touch
+    this.groups = new Set();
     this.queue = [];
-    this.moveAxis = 0;
     this.focusing = false;
-    this.trails = [];     // 已松开手指的残影
+    this.trails = [];
     this.keys = new Set();
-    this._lastSteer = null;
 
     const opts = { passive: false };
     el.addEventListener('pointerdown', e => this._down(e), opts);
@@ -41,7 +37,6 @@ export class Gestures {
     el.addEventListener('pointerup', e => this._up(e), opts);
     el.addEventListener('pointercancel', e => this._up(e, true), opts);
     el.addEventListener('contextmenu', e => e.preventDefault());
-    // 桌面调试用键盘
     addEventListener('keydown', e => this._key(e, true));
     addEventListener('keyup', e => this._key(e, false));
   }
@@ -53,19 +48,24 @@ export class Gestures {
     e.preventDefault();
     try { this.el.setPointerCapture(e.pointerId); } catch (err) { /* 合成事件没有活动指针 */ }
     const now = performance.now();
-    const t = {
-      id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY,
-      t0: now, state: 'pending', path: [{ x: e.clientX, y: e.clientY, t: now }],
-      ax: e.clientX, lastFlick: 0, full: [{ x: e.clientX, y: e.clientY, t: now }],
-    };
-    // 两指几乎同时按下 → 候选双指轻点
-    for (const o of this.touches.values()) {
-      if (o.state === 'pending' && now - o.t0 < CFG.twoTapGap) {
-        o.state = 'multi'; t.state = 'multi'; t.partner = o; o.partner = t;
-        break;
-      }
+    const t = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, t0: now, pts: [{ x: e.clientX, y: e.clientY, t: now }] };
+    let g = null;
+    for (const o of this.groups) {
+      if (!o.done && !o.closed && now - o.t0 < CFG.multiGap && o.members.length < 3) { g = o; break; }
     }
+    if (!g) { g = { members: [], t0: now, done: false }; this.groups.add(g); }
+    g.members.push(t);
+    t.group = g;
+    if (g.members.length === 2) this._initPair(g);
     this.touches.set(e.pointerId, t);
+  }
+
+  _initPair(g) {
+    const [a, b] = g.members;
+    g.a0 = Math.atan2(b.y - a.y, b.x - a.x);
+    g.rot = 0; g.lastA = g.a0;
+    g.c0 = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    g.d0 = Math.hypot(b.x - a.x, b.y - a.y);
   }
 
   _move(e) {
@@ -74,52 +74,33 @@ export class Gestures {
     e.preventDefault();
     const now = performance.now();
     t.x = e.clientX; t.y = e.clientY;
-    t.path.push({ x: t.x, y: t.y, t: now });
-    t.full.push({ x: t.x, y: t.y, t: now });
-    while (t.path.length > 2 && now - t.path[0].t > CFG.circleWindow) t.path.shift();
-    while (t.full.length > 40) t.full.shift();
-    const dist = Math.hypot(t.x - t.x0, t.y - t.y0);
-    const held = now - t.t0;
+    t.pts.push({ x: t.x, y: t.y, t: now });
+    if (t.pts.length > 30) t.pts.shift();
+    const g = t.group;
+    if (g.done) return;
+    const n = g.members.length;
 
-    if (t.state === 'multi') return;
-
-    if (t.state === 'pending') {
-      if (dist > CFG.steerStart) {
-        if (held >= CFG.chargeShow) { t.state = 'charge'; }
-        else { t.state = 'steer'; t.ax = t.x0; this._lastSteer = t; }
+    if (n === 1) {
+      const dx = t.x - t.x0, dy = t.y - t.y0, d = Math.hypot(dx, dy);
+      if (d > CFG.swipeDist) {
+        // 还在等第二根手指的窗口内也照样触发：快划要快
+        if (now - t.t0 < CFG.swipeTime) this.emit({ type: 'swipe', dx: dx / d, dy: dy / d, dir: dirOf(dx, dy) });
+        g.done = true; // 慢慢拖动不算任何手势
       }
-    }
-
-    if (t.state === 'charge') {
-      // 蓄力中甩出 → 墨弹
-      const f = this._flick(t, now);
-      if (f && held >= CFG.heavyTime) {
-        this.emit({ type: 'bolt', dx: f.dx, dy: f.dy, dir: f.dir });
-        t.state = 'done';
-        return;
-      }
-      if (dist > CFG.chargeDrift && !this.focusing) {
-        t.state = 'steer'; t.ax = t.x0; this._lastSteer = t;
-      }
-    }
-
-    if (t.state === 'steer') {
-      // 浮动锚点
-      const dx = t.x - t.ax;
-      if (Math.abs(dx) > CFG.steerLeash) t.ax = t.x - Math.sign(dx) * CFG.steerLeash;
-      // 按住时只认上下快划（左右就是移动本身）
-      if (now - t.lastFlick > CFG.heldFlickGap) {
-        const f = this._flick(t, now);
-        if (f && (f.dir === 'up' || f.dir === 'down')) {
-          this.emit({ type: 'flick', dir: f.dir, held: true });
-          t.lastFlick = now; // 不清空轨迹，画圈仍可继续识别
-          return;
-        }
-      }
-      // 画圈
-      if (this._circle(t)) {
-        this.emit({ type: 'circle' });
-        t.path = [{ x: t.x, y: t.y, t: now }];
+    } else if (n === 2) {
+      const [a, b] = g.members;
+      const ang = Math.atan2(b.y - a.y, b.x - a.x);
+      g.rot += angDiff(ang, g.lastA); g.lastA = ang;
+      const cx = (a.x + b.x) / 2 - g.c0.x, cy = (a.y + b.y) / 2 - g.c0.y;
+      const cd = Math.hypot(cx, cy);
+      if (Math.abs(g.rot) > CFG.twistAngle) {
+        this.emit({ type: 'twist', dir: Math.sign(g.rot) });
+        g.done = true;
+      } else if (cd > CFG.boltDist && now - g.t0 < CFG.boltTime + CFG.multiGap && !g.focus) {
+        this.emit({ type: 'bolt', dx: cx / cd, dy: cy / cd });
+        g.done = true;
+      } else if (g.focus && (cd > CFG.focusDrift * 2)) {
+        g.focus = false; g.done = true;
       }
     }
   }
@@ -130,136 +111,95 @@ export class Gestures {
     e.preventDefault?.();
     this.touches.delete(e.pointerId);
     const now = performance.now();
-    const held = now - t.t0;
-    if (this._lastSteer === t) this._lastSteer = null;
-    if (t.full.length > 2) this.trails.push({ pts: t.full, t: now });
-    if (cancelled) return;
+    if (t.pts.length > 2) this.trails.push({ pts: t.pts, t: now });
+    const g = t.group;
+    g.closed = true; // 有手指抬起后，这组不再接收新手指
+    const lifted = (g.lifted = (g.lifted || 0) + 1);
+    const allUp = lifted === g.members.length;
+    if (allUp) this.groups.delete(g);
+    if (cancelled || g.done) { if (g.focus) g.focus = false; return; }
 
-    switch (t.state) {
-      case 'multi': {
-        const p = t.partner;
-        // 最后一根手指抬起时判定
-        if (p && !this.touches.has(p.id) && held < CFG.twoTapMax) this.emit({ type: 'twoTap' });
-        break;
-      }
-      case 'pending':
-      case 'charge': {
-        if (t.focusOwner) break; // 凝神过就不再触发攻击
-        if (held >= CFG.heavyTime) this.emit({ type: 'heavy', x: t.x, y: t.y });
-        else this.emit({ type: 'tap', x: t.x, y: t.y });
-        break;
-      }
-      case 'steer': {
-        const f = this._flick(t, now + 1, true);
-        if (f) this.emit({ type: 'flick', dir: f.dir, held: false });
-        break;
-      }
+    const n = g.members.length;
+    const held = now - g.t0;
+    const still = g.members.every(m => Math.hypot(m.x - m.x0, m.y - m.y0) < CFG.tapMove);
+    if (n === 1) {
+      if (!still) return;
+      this.emit({ type: held >= CFG.holdTime ? 'heavy' : 'tap', x: t.x, y: t.y });
+      g.done = true;
+    } else if (n === 2) {
+      if (g.focus) { g.focus = false; g.done = true; return; }
+      if (still && held < CFG.multiTapMax) this.emit({ type: 'twoTap' });
+      g.done = true;
+    } else if (n === 3) {
+      if (still && held < CFG.multiTapMax + 150) this.emit({ type: 'map' });
+      g.done = true;
     }
   }
 
-  // 最近 flickWindow 内：位移够大且够直 → 快划
-  _flick(t, now, lifting = false) {
-    const pts = t.path;
-    if (pts.length < 2) return null;
-    const end = pts[pts.length - 1];
-    if (lifting && now - end.t > 60) return null; // 停住之后再松手不算
-    let i = pts.length - 1;
-    while (i > 0 && end.t - pts[i - 1].t <= CFG.flickWindow && pts[i - 1].t > t.lastFlick) i--;
-    const start = pts[i];
-    const dx = end.x - start.x, dy = end.y - start.y;
-    const d = Math.hypot(dx, dy);
-    if (d < CFG.flickDist) return null;
-    let turn = 0, prevA = null;
-    for (let k = i + 1; k < pts.length; k++) {
-      const sx = pts[k].x - pts[k - 1].x, sy = pts[k].y - pts[k - 1].y;
-      if (sx * sx + sy * sy < 4) continue;
-      const a = Math.atan2(sy, sx);
-      if (prevA !== null) turn += Math.abs(angDiff(a, prevA));
-      prevA = a;
-    }
-    if (turn > CFG.flickMaxTurn) return null;
-    const dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
-    return { dx: dx / d, dy: dy / d, dir };
-  }
-
-  // 轨迹累计转角 + 长度 + 尺寸 → 画圈
-  _circle(t) {
-    const pts = t.path;
-    if (pts.length < 8) return false;
-    let turn = 0, len = 0, prevA = null;
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    let last = pts[0];
-    for (let k = 1; k < pts.length; k++) {
-      const p = pts[k];
-      const sx = p.x - last.x, sy = p.y - last.y;
-      const sl = Math.hypot(sx, sy);
-      if (sl < 3) continue;
-      len += sl;
-      const a = Math.atan2(sy, sx);
-      if (prevA !== null) turn += angDiff(a, prevA);
-      prevA = a; last = p;
-      minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
-      minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
-    }
-    return Math.abs(turn) > CFG.circleTurn && len > CFG.circleMinLen &&
-      Math.min(maxX - minX, maxY - minY) > CFG.circleMinSize;
-  }
-
-  // 每帧调用：更新持续状态
-  update(canFocus) {
+  // 每帧：更新持续状态
+  update() {
     const now = performance.now();
-    let axis = 0;
-    const s = this._lastSteer;
-    if (s && this.touches.has(s.id) && s.state === 'steer') {
-      const dx = s.x - s.ax;
-      if (Math.abs(dx) > CFG.steerDead) axis = Math.sign(dx);
-    }
     let focusing = false;
-    for (const t of this.touches.values()) {
-      if (t.state === 'pending' && now - t.t0 >= CFG.chargeShow) t.state = 'charge';
-      if (t.state === 'charge' && now - t.t0 >= CFG.focusTime && canFocus) {
-        focusing = true; t.focusOwner = true;
-      }
+    for (const g of this.groups) {
+      if (g.members.length !== 2 || g.done || g.lifted) continue;
+      const [a, b] = g.members;
+      const drift = Math.max(Math.hypot(a.x - a.x0, a.y - a.y0), Math.hypot(b.x - b.x0, b.y - b.y0));
+      if (!g.focus && now - g.t0 > CFG.focusHold && drift < CFG.focusDrift && Math.abs(g.rot) < 0.35) g.focus = true;
+      if (g.focus) focusing = true;
     }
-    // 键盘
-    if (this.keys.has('ArrowLeft') || this.keys.has('a')) axis = -1;
-    if (this.keys.has('ArrowRight') || this.keys.has('d')) axis = 1;
-    if (this.keys.has('f')) focusing = canFocus;
-    this.moveAxis = axis;
+    if (this.keys.has('f')) focusing = true;
     this.focusing = focusing;
     this.trails = this.trails.filter(tr => now - tr.t < 260);
   }
 
-  // 给渲染层：正在蓄力的触点
+  // 给渲染层：单指长按中的触点（蓄力环）
   charges() {
     const now = performance.now();
     const out = [];
-    for (const t of this.touches.values()) {
-      if (t.state === 'charge') out.push({ x: t.x, y: t.y, held: now - t.t0 });
+    for (const g of this.groups) {
+      if (g.members.length !== 1 || g.done) continue;
+      const t = g.members[0];
+      if (!this.touches.has(t.id)) continue;
+      if (Math.hypot(t.x - t.x0, t.y - t.y0) < CFG.tapMove) out.push({ x: t.x, y: t.y, held: now - t.t0 });
     }
     return out;
   }
 
+  // 给渲染层：双指组（凝神 / 拧转进度）
+  pairs() {
+    const out = [];
+    for (const g of this.groups) {
+      if (g.members.length !== 2 || g.done) continue;
+      const [a, b] = g.members;
+      out.push({ a, b, rot: g.rot, focus: !!g.focus });
+    }
+    return out;
+  }
+
+  // 键盘（桌面调试）
+  keyAxis() {
+    const k = this.keys;
+    return (k.has('ArrowRight') || k.has('d') ? 1 : 0) - (k.has('ArrowLeft') || k.has('a') ? 1 : 0);
+  }
   _key(e, down) {
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-    if (down) {
-      if (this.keys.has(k)) return;
-      this.keys.add(k);
-      const map = {
-        ArrowUp: ['flick', 'up'], w: ['flick', 'up'], k: ['flick', 'up'], ' ': ['flick', 'up'],
-        ArrowDown: ['flick', 'down'], s: ['flick', 'down'],
-      };
-      if (map[k]) this.emit({ type: map[k][0], dir: map[k][1], held: true });
-      if (k === 'l' || k === 'Shift') this.emit({ type: 'flick', dir: 'dash', held: false });
-      if (k === 'j') this.emit({ type: 'keyAttack' });
-      if (k === 'u') this.emit({ type: 'keyHeavy' });
-      if (k === 'i') this.emit({ type: 'keyBolt' });
-      if (k === 'o') this.emit({ type: 'circle' });
-      if (k === 'm' || k === 'Escape') this.emit({ type: 'twoTap' });
-    } else {
-      this.keys.delete(k);
-    }
+    if (!down) { this.keys.delete(k); return; }
+    if (this.keys.has(k)) return;
+    this.keys.add(k);
+    const act = {
+      ArrowUp: 'jump', w: 'jump', k: 'jump', ' ': 'jump', ArrowDown: 'down', s: 'down',
+      j: 'attack', u: 'heavy', l: 'dash', Shift: 'dash', o: 'twist', i: 'bolt', m: 'map', Escape: 'map',
+    }[k];
+    if (act) this.emit({ type: 'key', act });
   }
+}
+
+function dirOf(dx, dy) {
+  // 上划给更宽的角度：斜上方也算跳
+  const a = Math.atan2(dy, dx);
+  if (a < -Math.PI * 0.2 && a > -Math.PI * 0.8) return 'up';
+  if (a > Math.PI * 0.3 && a < Math.PI * 0.7) return 'down';
+  return dx > 0 ? 'right' : 'left';
 }
 
 function angDiff(a, b) {
