@@ -26,6 +26,8 @@ class PinyinDict {
     var size: Int = 0
         private set
 
+    val syllableCount: Int get() = syllableNames.size
+
     fun syllable(id: Int): String = syllableNames[id]
     fun syllableId(s: String): Int = syllableIds[s] ?: -1
     fun isSyllable(s: String): Boolean = syllableIds.containsKey(s)

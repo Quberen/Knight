@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-name="收起键盘">
+  <rect x="5" y="5.5" width="14" height="7.5" rx="2"/>
+  <circle cx="8.5" cy="9.25" r="1" fill="currentColor" stroke="none"/>
+  <circle cx="12" cy="9.25" r="1" fill="currentColor" stroke="none"/>
+  <circle cx="15.5" cy="9.25" r="1" fill="currentColor" stroke="none"/>
+  <path d="M8.5 17 L12 20.5 L15.5 17"/>
+</svg>

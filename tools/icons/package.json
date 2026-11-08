@@ -1,0 +1,9 @@
+{
+  "name": "knight-icons",
+  "private": true,
+  "type": "module",
+  "description": "Turns icons/*.svg into Kotlin path data, checks ink coverage and balance, and draws a review sheet.",
+  "dependencies": {
+    "svgpath": "2.6.0"
+  }
+}

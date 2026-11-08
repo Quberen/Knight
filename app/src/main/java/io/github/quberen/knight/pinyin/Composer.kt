@@ -13,12 +13,17 @@ class Composer(var engine: PinyinEngine?) {
     var candidates: List<Candidate> = emptyList()
         private set
 
+    /** When off (password or incognito fields), picks are not remembered. */
+    var learning = true
+
+    private var shownInput = ""
+
     val isActive: Boolean get() = raw.isNotEmpty() || picks.isNotEmpty()
     val input: String get() = raw.toString()
 
     /** Text to show above the keys: picked words plus the remaining pinyin. */
     val display: String
-        get() = picks.joinToString("") { it.text } + (engine?.display(raw.toString()) ?: raw.toString())
+        get() = picks.joinToString("") { it.text } + shownInput
 
     fun type(c: Char) {
         if (raw.length >= MAX_INPUT) return
@@ -73,23 +78,32 @@ class Composer(var engine: PinyinEngine?) {
         raw.setLength(0)
         picks.clear()
         candidates = emptyList()
+        shownInput = ""
     }
 
     private fun finish(): String {
         val text = picks.joinToString("") { it.text }
         val entries = picks.flatMap { it.entries }
-        if (entries.isNotEmpty() && picks.all { it.entries.isNotEmpty() }) engine?.learn(entries)
+        if (learning && entries.isNotEmpty() && picks.all { it.entries.isNotEmpty() }) engine?.learn(entries)
         clear()
         return text
     }
 
-    private fun refresh() {
+    /** Recomputes candidates, e.g. after the engine or its options changed. */
+    fun refresh() {
         val s = raw.toString()
         val e = engine
-        candidates = when {
-            s.isEmpty() || s.all { it == '\'' } -> emptyList()
-            e == null -> listOf(Candidate(s.replace("'", ""), s.length, emptyList(), 0.0))
-            else -> e.candidates(s)
+        when {
+            s.isEmpty() || s.all { it == '\'' } -> {
+                candidates = emptyList(); shownInput = s
+            }
+            e == null -> {
+                candidates = listOf(Candidate(s.replace("'", ""), s.length, emptyList(), 0.0)); shownInput = s
+            }
+            else -> {
+                val a = e.analyze(s)
+                candidates = a.candidates; shownInput = a.display
+            }
         }
     }
 

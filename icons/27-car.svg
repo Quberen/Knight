@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-name="出行">
+  <path d="M6 12.5 L7.6 8.6 A1.6 1.6 0 0 1 9.1 7.5 H14.9 A1.6 1.6 0 0 1 16.4 8.6 L18 12.5 V15.5 A1 1 0 0 1 17 16.5 H7 A1 1 0 0 1 6 15.5 Z" fill="currentColor" fill-opacity=".35"/>
+  <path d="M8 16.5 V18 M16 16.5 V18"/>
+  <circle cx="8.75" cy="13.75" r="0.9" fill="currentColor" stroke="none"/>
+  <circle cx="15.25" cy="13.75" r="0.9" fill="currentColor" stroke="none"/>
+</svg>

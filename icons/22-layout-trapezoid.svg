@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-name="倒梯形布局">
+  <path d="M5 6 H19 Q21 6 20.6 8 L18.7 16.4 Q18.4 18 16.8 18 H7.2 Q5.6 18 5.3 16.4 L3.4 8 Q3 6 5 6 Z" fill="currentColor" fill-opacity=".35" stroke="none"/>
+  <circle cx="7.25" cy="9.5" r="1" fill="currentColor" stroke="none"/>
+  <circle cx="10.42" cy="9.5" r="1" fill="currentColor" stroke="none"/>
+  <circle cx="13.58" cy="9.5" r="1" fill="currentColor" stroke="none"/>
+  <circle cx="16.75" cy="9.5" r="1" fill="currentColor" stroke="none"/>
+  <circle cx="8.75" cy="12.25" r="1" fill="currentColor" stroke="none"/>
+  <circle cx="12" cy="12.25" r="1" fill="currentColor" stroke="none"/>
+  <circle cx="15.25" cy="12.25" r="1" fill="currentColor" stroke="none"/>
+  <path d="M10 15 H14"/>
+</svg>

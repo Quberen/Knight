@@ -52,3 +52,9 @@ android {
 dependencies {
     testImplementation("junit:junit:4.13.2")
 }
+
+// Previews: ./gradlew testDebugUnitTest --tests '*PreviewTest' -Dknight.preview=/some/dir
+tasks.withType<Test>().configureEach {
+    systemProperty("knight.preview", System.getProperty("knight.preview") ?: "")
+    systemProperty("java.awt.headless", "true")
+}
