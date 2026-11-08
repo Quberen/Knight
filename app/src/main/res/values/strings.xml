@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Knight 输入法</string>
+    <string name="ime_name">Knight 输入法</string>
+    <string name="subtype_name">中文拼音</string>
+</resources>
