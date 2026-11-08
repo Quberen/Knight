@@ -19,6 +19,19 @@ jobs:
           java-version: 17
 
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          # Keep the Gradle download cached on this branch too.
+          cache-read-only: false
+
+      # The Gradle download sometimes times out on GitHub's side; try a few times.
+      - name: Download Gradle
+        run: |
+          for i in 1 2 3 4 5; do
+            ./gradlew --no-daemon --version && exit 0
+            echo "Download failed, retrying ($i)"
+            sleep $((i * 20))
+          done
+          exit 1
 
       - name: Test and build
         run: ./gradlew --no-daemon testDebugUnitTest assembleRelease
