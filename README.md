@@ -37,10 +37,12 @@
 
 ## 开发
 
-- `pinyin/`：拼音引擎（切分、纠错、模糊音、整句），纯 Kotlin，有单元测试
-- `english/`：英文建议和纠正
-- `ui/`：键盘、候选栏、表情面板的布局和绘制，不依赖安卓，所以能在电脑上画预览
-- `ime/`：安卓部分（输入法服务、触摸、画布）
+- `core/`：不依赖安卓的部分，纯 Kotlin，测试和预览都在这里跑
+  - `pinyin/`：拼音引擎（切分、纠错、模糊音、整句）
+  - `english/`：英文建议和纠正
+  - `emoji/`：表情数据
+  - `ui/`：键盘、候选栏、表情面板的布局和绘制（通过一个很小的 Canvas2D 接口）
+- `app/`：安卓部分（输入法服务、触摸、画布、设置页）和词库文件
 
 ### 图标
 
@@ -58,7 +60,7 @@ cd tools/icons && npm install && node build.mjs   # 输出 tools/icons/out/sheet
 不用手机也能看效果：用和手机上同一套布局代码画出 PNG（表情由 Chromium 渲染）。
 
 ```
-./gradlew testDebugUnitTest --tests '*PreviewTest' -Dknight.preview=/tmp/preview
+./gradlew :core:test --tests '*PreviewTest' -Dknight.preview=/tmp/preview
 ```
 
 ### 数据

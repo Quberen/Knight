@@ -15,7 +15,7 @@ class PinyinEngineTest {
         @BeforeClass
         @JvmStatic
         fun load() {
-            val file = listOf("src/main/assets/dict.txt", "app/src/main/assets/dict.txt")
+            val file = listOf("../app/src/main/assets/dict.txt", "app/src/main/assets/dict.txt")
                 .map(::File).first { it.exists() }
             val dict = PinyinDict()
             file.reader().use { dict.load(it) }

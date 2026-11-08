@@ -20,10 +20,10 @@ import javax.imageio.ImageIO
  * Draws the keyboard in several states to PNG files, for checking the design
  * without a device. Runs only when asked:
  *
- *   ./gradlew testDebugUnitTest --tests '*PreviewTest' -Dknight.preview=/some/dir
+ *   ./gradlew :core:test --tests '*PreviewTest' -Dknight.preview=/some/dir
  */
 class PreviewTest {
-    private val assets = listOf("src/main/assets", "app/src/main/assets").map(::File).first { it.exists() }
+    private val assets = listOf("../app/src/main/assets", "app/src/main/assets").map(::File).first { it.exists() }
     private val engine by lazy {
         PinyinEngine(PinyinDict().also { d -> File(assets, "dict.txt").reader().use { d.load(it) } })
     }

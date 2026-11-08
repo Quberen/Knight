@@ -9,7 +9,7 @@ import java.io.File
 import java.io.StringReader
 
 class EmojiDataTest {
-    private val assets = listOf("src/main/assets", "app/src/main/assets").map(::File).first { it.exists() }
+    private val assets = listOf("../app/src/main/assets", "app/src/main/assets").map(::File).first { it.exists() }
 
     private fun load(supported: (String) -> Boolean = { true }) = EmojiData().also { d ->
         File(assets, "emoji.txt").reader().use { d.loadEmoji(it, supported) }

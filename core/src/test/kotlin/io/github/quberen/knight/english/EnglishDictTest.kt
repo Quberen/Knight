@@ -14,7 +14,7 @@ class EnglishDictTest {
         @BeforeClass
         @JvmStatic
         fun load() {
-            val file = listOf("src/main/assets/english.txt", "app/src/main/assets/english.txt")
+            val file = listOf("../app/src/main/assets/english.txt", "app/src/main/assets/english.txt")
                 .map(::File).first { it.exists() }
             dict = EnglishDict()
             file.reader().use { dict.load(it) }

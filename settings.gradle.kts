@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "Knight"
-include(":app")
+include(":app", ":core")

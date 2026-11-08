@@ -26,7 +26,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '../..');
 const srcDir = path.join(root, 'icons');
 const outDir = path.join(here, 'out');
-const ktFile = path.join(root, 'app/src/main/java/io/github/quberen/knight/ui/Icons.kt');
+const ktFile = path.join(root, 'core/src/main/kotlin/io/github/quberen/knight/ui/Icons.kt');
 const resDir = path.join(root, 'app/src/main/res');
 
 const INK = '#2B3240';
