@@ -98,7 +98,7 @@ public sealed class GripRecoil
 
 /// <summary>
 /// Small shots always use the white Vengeful Spirit prefab, even after Shade Soul is unlocked.
-/// Charged attack-key fireballs keep the unlocked tier.
+/// Charged Quick Cast fireballs keep the unlocked tier.
 /// </summary>
 public static class GripProjectiles
 {

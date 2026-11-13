@@ -80,6 +80,16 @@ public class SpellCharmsTests
         Assert.Equal("Mage's Grip", SpellCharms.EnglishName(41));
         Assert.Equal("萨满大师", SpellCharms.ChineseName(42));
         Assert.Equal("灵魂收集者", SpellCharms.ChineseName(43));
+        Assert.Contains("快捷施法", SpellCharms.ChineseDescription(41));
+        Assert.Contains("快捷施法", SpellCharms.ChineseDescription(42));
+        Assert.Contains("Quick Cast", SpellCharms.EnglishDescription(41));
+        Assert.Contains("Quick Cast", SpellCharms.EnglishDescription(42));
+        Assert.DoesNotContain("禁用骨钉技艺", SpellCharms.ChineseDescription(41));
+        Assert.DoesNotContain("Nail arts", SpellCharms.EnglishDescription(41));
+        Assert.DoesNotContain("按住攻击", SpellCharms.ChineseDescription(41));
+        Assert.DoesNotContain("按住攻击", SpellCharms.ChineseDescription(42));
+        Assert.DoesNotContain("Tap attack", SpellCharms.EnglishDescription(41));
+        Assert.DoesNotContain("Hold attack", SpellCharms.EnglishDescription(42));
     }
 
     [Theory]
@@ -93,6 +103,20 @@ public class SpellCharmsTests
     [InlineData(null, false)]
     public void IsChineseLanguageRecognizesZhCodes(string? code, bool expected) =>
         Assert.Equal(expected, SpellCharms.IsChineseLanguage(code));
+
+    [Theory]
+    [InlineData("EN", "ZH", false)]   // in-session switch to EN must not stay Chinese because GameManager is still ZH
+    [InlineData("ZH", "EN", true)]    // in-session switch to ZH must be Chinese even if GameManager is still EN
+    [InlineData("ZH_CN", "EN", true)]
+    [InlineData("EN", "EN", false)]
+    [InlineData("ZH", "ZH", true)]
+    [InlineData(null, "ZH", true)]    // fallback only when CurrentLanguage is unavailable
+    [InlineData("", "ZH", true)]
+    [InlineData(null, "EN", false)]
+    [InlineData(null, null, false)]
+    public void ResolveIsChinesePrefersLiveCurrentLanguage(string? current, string? saved, bool expected) =>
+        Assert.Equal(expected, SpellCharms.ResolveIsChinese(current, saved));
+
 
     [Fact]
     public void EveryChineseGlyphIsInTheVanillaZhCorpus()

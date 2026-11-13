@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Modding;
 using Spellcaster.Core;
 using UnityEngine;
@@ -65,6 +66,8 @@ internal sealed class CharmRuntime
         ModHooks.SavegameSaveHook += OnAfterSave;
         ModHooks.NewGameHook += OnNewGame;
         board.Install();
+        try { On.Language.Language.DoSwitch += OnDoSwitch; }
+        catch (Exception e) { Modding.Logger.Log("[Spellcaster] DoSwitch hook: " + e.Message); }
         EnsureOwned(asNew: true);
         SyncEffects();
     }
@@ -86,6 +89,7 @@ internal sealed class CharmRuntime
         ModHooks.BeforeSavegameSaveHook -= OnBeforeSave;
         ModHooks.SavegameSaveHook -= OnAfterSave;
         ModHooks.NewGameHook -= OnNewGame;
+        try { On.Language.Language.DoSwitch -= OnDoSwitch; } catch { }
         board.Uninstall();
         runtime.SetGrip(false);
         runtime.SetCollector(false);
@@ -101,20 +105,16 @@ internal sealed class CharmRuntime
 
     internal static bool GameIsChinese()
     {
+        string? current = null;
+        string? saved = null;
+        try { current = Language.Language.CurrentLanguage().ToString(); } catch { }
         try
         {
-            string s = Language.Language.CurrentLanguage().ToString();
-            if (SpellCharms.IsChineseLanguage(s)) return true;
+            if (GameManager.instance != null)
+                saved = GameManager.instance.GetLanguageAsString();
         }
         catch { }
-        try
-        {
-            if (GameManager.instance != null
-                && SpellCharms.IsChineseLanguage(GameManager.instance.GetLanguageAsString()))
-                return true;
-        }
-        catch { }
-        return false;
+        return SpellCharms.ResolveIsChinese(current, saved);
     }
 
     internal void Grant(int id, bool asNew)
@@ -219,10 +219,94 @@ internal sealed class CharmRuntime
 
     private string OnLanguage(string key, string sheet, string orig)
     {
+        // Resolve at query time from the live CurrentLanguage, not a cached flag.
         bool zh = GameIsChinese();
         if (SpellCharms.IsNameKey(key, out int id)) return SpellCharms.DisplayName(id, zh);
         if (SpellCharms.IsDescKey(key, out id)) return SpellCharms.DisplayDescription(id, zh);
         return orig;
+    }
+
+    private static void OnDoSwitch(On.Language.Language.orig_DoSwitch orig, Language.LanguageCode newLang)
+    {
+        orig(newLang);
+        try { RefreshDisplayedCharmText(); }
+        catch (Exception e) { Modding.Logger.Log("[Spellcaster] refresh charm text: " + e.Message); }
+    }
+
+    /// <summary>
+    /// Re-apply name/desc on the open Charms pane after an in-session language switch
+    /// so TextMeshPro is not left holding the previous language.
+    /// </summary>
+    internal static void RefreshDisplayedCharmText()
+    {
+        var cameras = GameCameras.instance;
+        if (cameras == null || cameras.hudCamera == null) return;
+        var charmsGo = FindNamed(cameras.hudCamera.gameObject, "Charms");
+        if (charmsGo == null || !charmsGo.activeInHierarchy) return;
+
+        bool zh = GameIsChinese();
+        int id = 0;
+        try
+        {
+            var fsm = charmsGo.GetComponents<PlayMakerFSM>().FirstOrDefault(f => f.FsmName == "UI Charms");
+            var v = fsm != null ? fsm.FsmVariables.FindFsmInt("Current Item Number") : null;
+            if (v != null) id = v.Value;
+        }
+        catch { }
+
+        string name = SpellCharms.IsOurs(id) ? SpellCharms.DisplayName(id, zh) : null!;
+        string desc = SpellCharms.IsOurs(id) ? SpellCharms.DisplayDescription(id, zh) : null!;
+
+        SetTmp(FindNamed(charmsGo, "Text Name"), name);
+        SetTmp(FindNamed(charmsGo, "Text Desc"), desc);
+
+        // Ask the vanilla Update Text FSM to re-pull Convo Name / Convo Desc (Language.Get).
+        try
+        {
+            foreach (var fsm in charmsGo.GetComponents<PlayMakerFSM>())
+            {
+                if (fsm == null) continue;
+                if (fsm.FsmName == "Update Text")
+                {
+                    fsm.SendEvent("UPDATE TEXT");
+                    fsm.SendEvent("CHANGE TEXT");
+                }
+            }
+            // After the FSM runs it will Language.Get through OnLanguage. If we already
+            // wrote TMP and the FSM also writes, that is fine — same resolved string.
+        }
+        catch { }
+
+        Modding.Logger.Log("[Spellcaster] refreshed charm text lang=" + (zh ? "ZH" : "EN")
+            + " id=" + id
+            + (SpellCharms.IsOurs(id) ? " name=" + name : ""));
+    }
+
+    private static void SetTmp(GameObject? go, string? text)
+    {
+        if (go == null || text == null) return;
+        foreach (var c in go.GetComponents<Component>())
+        {
+            var tpe = c.GetType();
+            if (tpe.Name.IndexOf("TextMeshPro", StringComparison.OrdinalIgnoreCase) < 0
+                && tpe.Name != "TextMeshPro") continue;
+            var prop = tpe.GetProperty("text") ?? tpe.GetProperty("Text");
+            if (prop != null && prop.CanWrite) prop.SetValue(c, text, null);
+        }
+    }
+
+    private static GameObject? FindNamed(GameObject? parent, string name)
+    {
+        if (parent == null) return null;
+        if (parent.name == name) return parent;
+        var tr = parent.transform.Find(name);
+        if (tr != null) return tr.gameObject;
+        foreach (Transform c in parent.transform)
+        {
+            var f = FindNamed(c.gameObject, name);
+            if (f != null) return f;
+        }
+        return null;
     }
 
     private bool OnGetBool(string name, bool orig)

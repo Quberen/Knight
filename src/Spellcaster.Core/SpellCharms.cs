@@ -67,6 +67,19 @@ public static class SpellCharms
         return u == "ZH" || u.StartsWith("ZH_", StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Prefer the live Language.CurrentLanguage() code when it is available.
+    /// Do not OR it with GameManager's saved gameLanguage — that stays on the
+    /// previous setting through an in-session SwitchLanguage and would keep
+    /// Chinese text after a switch to English (and vice versa).
+    /// </summary>
+    public static bool ResolveIsChinese(string? currentLanguage, string? gameManagerLanguage)
+    {
+        if (!string.IsNullOrEmpty(currentLanguage))
+            return IsChineseLanguage(currentLanguage);
+        return IsChineseLanguage(gameManagerLanguage);
+    }
+
     public static string EnglishName(int id) => id switch
     {
         MageGripId => "Mage's Grip",
@@ -90,9 +103,9 @@ public static class SpellCharms
     public static string ChineseDescription(int id) => id switch
     {
         MageGripId =>
-            "轻点攻击向输入方向发射小复仇之魂（始终为白色，即使已解锁暗影之魂），伤害约为骨钉的一半，不耗魂；回魂为骨钉的一半。按住 0.45 秒松开施放已解锁法术，耗 25 魂。禁用骨钉技艺。",
+            "轻点快捷施法向输入方向发射小复仇之魂（始终为白色，即使已解锁暗影之魂），伤害约为骨钉的一半，不耗魂；回魂为骨钉的一半。按住快捷施法 0.45 秒松开施放已解锁法术，耗 25 魂。",
         ShamanMasterId =>
-            "需要已装备法师之握。按住攻击到第二段（1.5 秒；装备萨满之石时 1.1 秒）施放更强蓄力法术：伤害 ×2，范围增大，耗 48 魂（装备法术扭曲者时 36）。",
+            "需要已装备法师之握。按住快捷施法到第二段（1.5 秒；装备萨满之石时 1.1 秒）施放更强蓄力法术：伤害 ×2，范围增大，耗 48 魂（装备法术扭曲者时 36）。",
         SoulCollectorId =>
             "法术命中每段固定回 9 魂，可与捕魂者、噬魂者一同生效。骨钉回魂减半。",
         _ => throw new ArgumentOutOfRangeException(nameof(id))
@@ -101,9 +114,9 @@ public static class SpellCharms
     public static string EnglishDescription(int id) => id switch
     {
         MageGripId =>
-            "Tap attack to fire a small Vengeful Spirit (always the white form, even with Shade Soul unlocked) in the input direction, dealing about half nail damage at no soul cost; nail soul gain is halved. Hold 0.45s and release to cast the unlocked spell for 25 soul. Nail arts are disabled.",
+            "Tap Quick Cast to fire a small Vengeful Spirit (always the white form, even with Shade Soul unlocked) in the input direction, dealing about half nail damage at no soul cost; nail soul gain is halved. Hold Quick Cast 0.45s and release to cast the unlocked spell for 25 soul.",
         ShamanMasterId =>
-            "Requires Mage's Grip to be equipped. Hold attack to the second threshold (1.5s, or 1.1s with Shaman Stone) for a stronger charged spell: double damage, larger range, 48 soul (36 with Spell Twister).",
+            "Requires Mage's Grip to be equipped. Hold Quick Cast to the second threshold (1.5s, or 1.1s with Shaman Stone) for a stronger charged spell: double damage, larger range, 48 soul (36 with Spell Twister).",
         SoulCollectorId =>
             "Each damaging spell hit restores a flat 9 soul, stacking with Soul Catcher and Soul Eater. Nail soul gain is halved.",
         _ => throw new ArgumentOutOfRangeException(nameof(id))
