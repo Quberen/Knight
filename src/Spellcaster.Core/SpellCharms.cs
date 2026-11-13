@@ -103,9 +103,9 @@ public static class SpellCharms
     public static string ChineseDescription(int id) => id switch
     {
         MageGripId =>
-            "轻点快捷施法向输入方向发射小复仇之魂（始终为白色，即使已解锁暗影之魂），伤害约为骨钉的一半，不耗魂；回魂为骨钉的一半。按住快捷施法蓄力（0.45 秒），蓄满后按住可保存并继续移动，松开按方向施放已解锁法术，耗 25 魂。",
+            "轻点快捷施法向输入方向发射小复仇之魂（始终为白色，即使已解锁暗影之魂），伤害约为骨钉的一半，不耗魂；回魂为骨钉的一半。按住快捷施法蓄力（0.675 秒），蓄满后按住可保存并继续移动，第一段松开按方向施放原版已解锁法术（已解锁时为暗影之魂），大小和伤害保持原版，耗 25 魂；只有萨满大师第二段才是伤害 ×2 的大大法术。光效从 0.3 秒开始。",
         ShamanMasterId =>
-            "需要已装备法师之握。第一段蓄满后继续按住快捷施法到第二段（1.5 秒；装备萨满之石时 1.1 秒），再闪一次后同样可保存，松开施放更强蓄力法术：伤害 ×2，范围增大，耗 48 魂（装备法术扭曲者时 36）。",
+            "需要已装备法师之握。第一段蓄满后继续按住快捷施法到第二段（2.25 秒；装备萨满之石时 1.65 秒），魂足够才再闪一次，同样可保存；第一段是原版法术，只有第二段是大大法术：伤害 ×2，范围 ×1.45，耗 48 魂（装备法术扭曲者时 36）。极速施法使第二段时间 ×1.5，为 3.375 / 2.475 秒。松开时魂不足第二段但至少 25 时施放第一段。",
         SoulCollectorId =>
             "法术命中每段固定回 9 魂，可与捕魂者、噬魂者一同生效。骨钉回魂减半。",
         _ => throw new ArgumentOutOfRangeException(nameof(id))
@@ -114,9 +114,9 @@ public static class SpellCharms
     public static string EnglishDescription(int id) => id switch
     {
         MageGripId =>
-            "Tap Quick Cast to fire a small Vengeful Spirit (always the white form, even with Shade Soul unlocked) in the input direction, dealing about half nail damage at no soul cost; the small shot restores half nail soul. Hold to charge (0.45s); once charged, keep holding to store it while moving, then release to cast the unlocked spell for 25 soul.",
+            "Tap Quick Cast to fire a small Vengeful Spirit (always the white form, even with Shade Soul unlocked) in the input direction, dealing about half nail damage at no soul cost; the small shot restores half nail soul. Hold to charge (0.675s); once charged, keep holding to store it while moving, then release the first store to cast the vanilla unlocked spell (Shade Soul if unlocked) for 25 soul, with vanilla size and damage. Glow starts at 0.3s. Only Shaman Master's second store is the enlarged ×2 spell.",
         ShamanMasterId =>
-            "Requires Mage's Grip to be equipped. After the first charge, keep holding Quick Cast to the second threshold (1.5s, or 1.1s with Shaman Stone) for a second flash; the charge stays stored until release: double damage, larger range, 48 soul (36 with Spell Twister).",
+            "Requires Mage's Grip to be equipped. After the first charge, keep holding Quick Cast to the second threshold (2.25s, or 1.65s with Shaman Stone) for a second flash only with enough soul. The first store is vanilla; only the second is the big spell: ×2 damage, ×1.45 range, 48 soul (36 with Spell Twister). Fast Casting multiplies the second time by 1.5: 3.375s / 2.475s. If soul falls below the second cost, release falls back to the first store with at least 25 soul.",
         SoulCollectorId =>
             "Each damaging spell hit restores a flat 9 soul, stacking with Soul Catcher and Soul Eater. Nail soul gain is halved.",
         _ => throw new ArgumentOutOfRangeException(nameof(id))

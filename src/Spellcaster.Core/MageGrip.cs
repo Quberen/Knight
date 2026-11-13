@@ -8,9 +8,9 @@ public enum GripRelease { None, SmallProjectile, NormalSpell, ChargedSpell }
 /// Quick Cast charge, independent of render/physics frame partitioning.
 /// Tap (&lt; <see cref="TapSeconds"/>) fires a small shot. Holding past the tap
 /// window but not to <see cref="ChargeSeconds"/> releases nothing, like an
-/// unfinished vanilla nail art. At 0.45s the first charge is stored for as
+/// unfinished vanilla nail art. At 0.675s the first charge is stored for as
 /// long as the button stays held; Shaman Master then stores a second charge
-/// at 1.5s (1.1s with Shaman Stone). Nailmaster's Glory does not shorten
+/// at 2.25s (1.65s with Shaman Stone). Nailmaster's Glory does not shorten
 /// these times.
 /// </summary>
 public sealed class GripAttack
@@ -23,7 +23,8 @@ public sealed class GripAttack
     }
 
     public const double TapSeconds = 0.2;
-    public const double ChargeSeconds = 0.45;
+    public const double GlowSeconds = 0.3;
+    public const double ChargeSeconds = 0.675;
     public const int SoulCost = 25;
     private double? pressedAt;
     private double nextAttack;
@@ -68,22 +69,25 @@ public sealed class GripAttack
     }
 
     /// <summary>0 = not stored, 1 = first charge stored, 2 = Shaman Master second charge stored.</summary>
-    public int StoredTier(double now, bool shamanMaster = false, bool shamanStone = false, bool fastCasting = false)
+    public int StoredTier(double now, bool shamanMaster = false, bool shamanStone = false, bool fastCasting = false,
+        int soul = int.MaxValue, bool spellTwister = false)
     {
         if (!Holding) return 0;
         double held = ChargeElapsed + 1e-9;
-        if (shamanMaster && held >= SecondChargeSeconds(shamanStone, fastCasting)) return 2;
+        if (shamanMaster && held >= SecondChargeSeconds(shamanStone, fastCasting) &&
+            soul >= Cost(GripRelease.ChargedSpell, spellTwister)) return 2;
         if (held >= ChargeSeconds) return 1;
         return 0;
     }
 
-    /// <summary>Winding particles: after the tap window, until the next stored tier.</summary>
-    public bool Winding(double now, bool shamanMaster = false, bool shamanStone = false, bool fastCasting = false)
+    /// <summary>Winding particles: from GlowSeconds, until the next stored tier.</summary>
+    public bool Winding(double now, bool shamanMaster = false, bool shamanStone = false, bool fastCasting = false,
+        int soul = int.MaxValue, bool spellTwister = false)
     {
         if (!Holding) return false;
         double held = ChargeElapsed + 1e-9;
-        if (held < TapSeconds) return false;
-        int tier = StoredTier(now, shamanMaster, shamanStone, fastCasting);
+        if (held < GlowSeconds) return false;
+        int tier = StoredTier(now, shamanMaster, shamanStone, fastCasting, soul, spellTwister);
         if (tier >= 2) return false;
         if (tier == 1) return shamanMaster && held < SecondChargeSeconds(shamanStone, fastCasting);
         return held < ChargeSeconds;
@@ -112,7 +116,7 @@ public sealed class GripAttack
     }
 
     public static double SecondChargeSeconds(bool shamanStone, bool fastCasting) =>
-        (shamanStone ? 1.1 : 1.5) * (fastCasting ? 1.5 : 1);
+        (shamanStone ? 1.65 : 2.25) * (fastCasting ? 1.5 : 1);
 
     public static int Cost(GripRelease release, bool spellTwister = false) => release switch
     {

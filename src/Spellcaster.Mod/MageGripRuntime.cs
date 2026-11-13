@@ -337,8 +337,10 @@ internal sealed class MageGripRuntime
         bool shaman = runtime.ShamanMasterEnabled;
         bool stone = PlayerData.instance.GetBool("equippedCharm_19");
         bool fast = runtime.FastCastingEnabled;
-        int tier = attack.StoredTier(now, shaman, stone, fast);
-        bool winding = attack.Winding(now, shaman, stone, fast);
+        int soul = PlayerData.instance.GetInt("MPCharge");
+        bool twister = PlayerData.instance.GetBool("equippedCharm_33");
+        int tier = attack.StoredTier(now, shaman, stone, fast, soul, twister);
+        bool winding = attack.Winding(now, shaman, stone, fast, soul, twister);
         var glow = Get<GameObject>(self, "artChargeEffect");
         var charged = Get<GameObject>(self, "artChargedEffect");
         var flash = Get<GameObject>(self, "artChargedFlash");
