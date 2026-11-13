@@ -21,7 +21,7 @@ public class StageThreeTests
     }
 
     [Theory]
-    [InlineData(.449, 99, false, true, true, GripRelease.SmallProjectile, 0, CastKind.SmallProjectile)]
+    [InlineData(.449, 99, false, true, true, GripRelease.None, 0, null)]
     [InlineData(.45, 99, false, true, true, GripRelease.NormalSpell, 25, CastKind.NormalSpell)]
     [InlineData(1.499, 99, false, true, true, GripRelease.NormalSpell, 25, CastKind.NormalSpell)]
     [InlineData(1.5, 48, false, true, true, GripRelease.ChargedSpell, 48, CastKind.ChargedSpell)]
@@ -29,19 +29,20 @@ public class StageThreeTests
     [InlineData(1.5, 47, false, true, true, GripRelease.NormalSpell, 25, CastKind.NormalSpell)]
     [InlineData(1.5, 35, true, true, true, GripRelease.NormalSpell, 25, CastKind.NormalSpell)]
     [InlineData(1.5, 25, false, true, true, GripRelease.NormalSpell, 25, CastKind.NormalSpell)]
-    [InlineData(1.5, 24, true, true, true, GripRelease.SmallProjectile, 0, CastKind.SmallProjectile)]
-    [InlineData(1.5, 0, false, true, true, GripRelease.SmallProjectile, 0, CastKind.SmallProjectile)]
+    [InlineData(1.5, 24, true, true, true, GripRelease.None, 0, null)]
+    [InlineData(1.5, 0, false, true, true, GripRelease.None, 0, null)]
     [InlineData(1.5, 99, false, false, true, GripRelease.NormalSpell, 25, CastKind.NormalSpell)]
-    [InlineData(1.5, 99, false, true, false, GripRelease.SmallProjectile, 0, CastKind.SmallProjectile)]
+    [InlineData(1.5, 99, false, true, false, GripRelease.None, 0, null)]
     [InlineData(.45, 25, true, true, true, GripRelease.NormalSpell, 25, CastKind.NormalSpell)]
     public void ReleaseSelectsOneAffordableTier(double seconds, int soul, bool twister, bool master, bool unlocked,
-        GripRelease expected, int cost, CastKind kind)
+        GripRelease expected, int cost, CastKind? kind)
     {
         var attack = new GripAttack(); attack.Press(5);
         var release = attack.Release(5 + seconds, soul, unlocked, master, false, false, twister);
         Assert.Equal(expected, release);
         Assert.Equal(cost, GripAttack.Cost(release, twister));
-        Assert.Equal(kind, GripAttack.Kind(release));
+        if (kind.HasValue) Assert.Equal(kind.Value, GripAttack.Kind(release));
+        else Assert.Equal(GripRelease.None, release);
         Assert.Equal(GripRelease.None, attack.Release(10, 99, true, true));
     }
 

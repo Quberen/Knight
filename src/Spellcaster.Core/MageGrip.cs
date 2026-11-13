@@ -4,9 +4,18 @@ namespace Spellcaster.Core;
 
 public enum GripRelease { None, SmallProjectile, NormalSpell, ChargedSpell }
 
-/// <summary>Gameplay timestamps, independent of render/physics frame partitioning.</summary>
+/// <summary>
+/// Quick Cast charge, independent of render/physics frame partitioning.
+/// Tap (&lt; <see cref="TapSeconds"/>) fires a small shot. Holding past the tap
+/// window but not to <see cref="ChargeSeconds"/> releases nothing, like an
+/// unfinished vanilla nail art. At 0.45s the first charge is stored for as
+/// long as the button stays held; Shaman Master then stores a second charge
+/// at 1.5s (1.1s with Shaman Stone). Nailmaster's Glory does not shorten
+/// these times.
+/// </summary>
 public sealed class GripAttack
 {
+    public const double TapSeconds = 0.2;
     public const double ChargeSeconds = 0.45;
     public const int SoulCost = 25;
     private double? pressedAt;
@@ -20,6 +29,34 @@ public sealed class GripAttack
         if (!Holding && CanAttack(now)) pressedAt = now;
     }
 
+    public double Held(double now)
+    {
+        Numbers.RequireFiniteNonnegative(now, nameof(now));
+        return pressedAt.HasValue ? Math.Max(0, now - pressedAt.Value) : 0;
+    }
+
+    /// <summary>0 = not stored, 1 = first charge stored, 2 = Shaman Master second charge stored.</summary>
+    public int StoredTier(double now, bool shamanMaster = false, bool shamanStone = false, bool fastCasting = false)
+    {
+        if (!Holding) return 0;
+        double held = Held(now) + 1e-9;
+        if (shamanMaster && held >= SecondChargeSeconds(shamanStone, fastCasting)) return 2;
+        if (held >= ChargeSeconds) return 1;
+        return 0;
+    }
+
+    /// <summary>Winding particles: after the tap window, until the next stored tier.</summary>
+    public bool Winding(double now, bool shamanMaster = false, bool shamanStone = false, bool fastCasting = false)
+    {
+        if (!Holding) return false;
+        double held = Held(now) + 1e-9;
+        if (held < TapSeconds) return false;
+        int tier = StoredTier(now, shamanMaster, shamanStone, fastCasting);
+        if (tier >= 2) return false;
+        if (tier == 1) return shamanMaster && held < SecondChargeSeconds(shamanStone, fastCasting);
+        return held < ChargeSeconds;
+    }
+
     public GripRelease Release(double now, int soul, bool spellUnlocked,
         bool shamanMaster = false, bool shamanStone = false, bool fastCasting = false, bool spellTwister = false)
     {
@@ -28,10 +65,14 @@ public sealed class GripAttack
         pressedAt = null;
         if (!start.HasValue || !CanAttack(now)) return GripRelease.None;
         double held = now - start.Value + 1e-9;
-        if (!spellUnlocked) return GripRelease.SmallProjectile;
+        // Genuine tap only. Past the tap window an unfinished charge is a no-op,
+        // matching vanilla nail arts (release before full charge does nothing extra).
+        if (held < TapSeconds) return GripRelease.SmallProjectile;
+        if (!spellUnlocked) return GripRelease.None;
         if (shamanMaster && held >= SecondChargeSeconds(shamanStone, fastCasting) &&
             soul >= Cost(GripRelease.ChargedSpell, spellTwister)) return GripRelease.ChargedSpell;
-        return held >= ChargeSeconds && soul >= SoulCost ? GripRelease.NormalSpell : GripRelease.SmallProjectile;
+        if (held >= ChargeSeconds && soul >= SoulCost) return GripRelease.NormalSpell;
+        return GripRelease.None;
     }
 
     public static double SecondChargeSeconds(bool shamanStone, bool fastCasting) =>
