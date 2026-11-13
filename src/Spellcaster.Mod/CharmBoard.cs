@@ -161,11 +161,43 @@ internal sealed class CharmBoard
             cc.transform.localScale = bb.transform.localScale;
         }
 
-        boardReady = true;
+        // Small lift of ONLY the fifth row (41–43), not the vanilla 4 rows, so the
+        // new charms sit clear of the bottom flourish. Keep a gap under row 4.
+        const float fifthLift = 0.55f;
         var bb31 = Child(backboards, "BB 31");
         var bb41 = Child(backboards, "BB 41");
-        Modding.Logger.Log("[Spellcaster] charm board: injected ids 41–43 (5th row, localY 31="
-            + (bb31 != null ? bb31.transform.localPosition.y.ToString("0.00") : "?")
+        float y31 = bb31 != null ? bb31.transform.localPosition.y : 0f;
+        float y41before = bb41 != null ? bb41.transform.localPosition.y : 0f;
+        float lift = fifthLift;
+        // Do not close the gap to row 4 below a comfortable minimum (~0.55).
+        const float minGap = 0.55f;
+        float gap = y31 - (y41before + lift);
+        if (gap < minGap) lift = Math.Max(0f, (y31 - y41before) - minGap);
+        if (lift > 0.01f)
+        {
+            foreach (int id in SpellCharms.Ids)
+            {
+                var bb = Child(backboards, "BB " + id);
+                if (bb != null)
+                {
+                    var pos = bb.transform.localPosition;
+                    bb.transform.localPosition = new Vector3(pos.x, pos.y + lift, pos.z);
+                }
+                var cc = Child(collected, id.ToString());
+                if (cc != null && bb != null)
+                {
+                    var wp = bb.transform.position;
+                    cc.transform.position = new Vector3(wp.x, wp.y, cc.transform.position.z);
+                }
+            }
+        }
+
+        boardReady = true;
+        bb41 = Child(backboards, "BB 41");
+        Modding.Logger.Log("[Spellcaster] charm board: injected ids 41–43 (5th row only lift="
+            + lift.ToString("0.00")
+            + " localY 31=" + (bb31 != null ? bb31.transform.localPosition.y.ToString("0.00") : "?")
+            + " 41before=" + y41before.ToString("0.00")
             + " 41=" + (bb41 != null ? bb41.transform.localPosition.y.ToString("0.00") : "?") + ").");
     }
 

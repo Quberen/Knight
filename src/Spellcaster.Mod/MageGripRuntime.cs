@@ -10,7 +10,10 @@ using UnityEngine;
 
 namespace Spellcaster.Mod;
 
-/// <summary>Owns only the attack-button path. Spell/focus input and native spell states stay vanilla.</summary>
+/// <summary>
+/// Owns only the Quick Cast button when Mage's Grip is equipped and Vengeful Spirit is unlocked.
+/// Nail/attack (including nail arts) and regular Cast (focus/heal, 33-soul tap) stay vanilla.
+/// </summary>
 internal sealed class MageGripRuntime
 {
     private readonly SpellRuntime runtime;
@@ -26,44 +29,26 @@ internal sealed class MageGripRuntime
     private bool prepaidShamanStone;
     private static readonly Dictionary<string, FieldInfo> Fields = new Dictionary<string, FieldInfo>();
     private static readonly MethodInfo SetStateMethod = typeof(HeroController).GetMethod("SetState", BindingFlags.Instance | BindingFlags.NonPublic)!;
-    private static readonly MethodInfo CanAttackMethod = typeof(HeroController).GetMethod("CanAttack", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
     internal MageGripRuntime(SpellRuntime runtime) => this.runtime = runtime;
 
     internal void Install()
     {
-        On.HeroController.DoAttack += OnDoAttack;
-        On.HeroController.Attack += OnAttack;
-        On.HeroController.CanNailCharge += OnCanNailCharge;
-        On.HeroController.CanNailArt += OnCanNailArt;
         On.HeroController.Update += OnUpdate;
         On.HeroController.FixedUpdate += OnFixedUpdate;
         On.HeroController.CancelBounce += OnCancelBounce;
         On.HeroController.TakeMP += OnTakeMP;
-        ClearNailCharge(HeroController.instance);
-        var self = HeroController.instance;
-        if (self != null)
-        {
-            foreach (var slash in self.GetComponentsInChildren<NailSlash>(true)) slash.CancelAttack();
-            self.cState.attacking = false;
-            self.cState.upAttacking = false;
-            self.cState.downAttacking = false;
-            Set(self, "attack_time", 0f);
-        }
+        On.HutongGames.PlayMaker.Actions.ListenForQuickCast.OnUpdate += OnListenQuickCast;
     }
 
     internal void Uninstall()
     {
         Reset();
-        ClearNailCharge(HeroController.instance);
-        On.HeroController.DoAttack -= OnDoAttack;
-        On.HeroController.Attack -= OnAttack;
-        On.HeroController.CanNailCharge -= OnCanNailCharge;
-        On.HeroController.CanNailArt -= OnCanNailArt;
         On.HeroController.Update -= OnUpdate;
         On.HeroController.FixedUpdate -= OnFixedUpdate;
         On.HeroController.CancelBounce -= OnCancelBounce;
         On.HeroController.TakeMP -= OnTakeMP;
+        On.HutongGames.PlayMaker.Actions.ListenForQuickCast.OnUpdate -= OnListenQuickCast;
         SpellProjectile.RetireSmall();
     }
 
@@ -79,21 +64,6 @@ internal sealed class MageGripRuntime
     }
     private static void Set(HeroController self, string name, object value) => Field(name).SetValue(self, value);
 
-    private static void ClearNailCharge(HeroController? self)
-    {
-        if (self == null) return;
-        self.cState.nailCharging = false;
-        Set(self, "nailChargeTimer", 0f);
-        var audio = Field("audioCtrl").GetValue(self) as HeroAudioController;
-        if (audio != null)
-        {
-            audio.StopSound(HeroSounds.NAIL_ART_CHARGE);
-            audio.StopSound(HeroSounds.NAIL_ART_READY);
-        }
-        foreach (string name in new[] { "artChargeEffect", "artChargedEffect", "artChargedFlash" })
-            (Field(name).GetValue(self) as GameObject)?.SetActive(false);
-    }
-
     internal void Reset()
     {
         if (prepaidFsm != null && prepaidState != null && prepaidFsm.gameObject.activeInHierarchy)
@@ -104,6 +74,7 @@ internal sealed class MageGripRuntime
         hero = null;
     }
 
+    /// <summary>Vengeful Spirit unlocked. The runtime is only constructed while Mage's Grip is equipped.</summary>
     private static bool Active => PlayerData.instance != null && PlayerData.instance.GetInt("fireballLevel") > 0;
 
     private bool Ready(HeroController self) => runtime.CanPlay && !self.cState.transitioning &&
@@ -111,20 +82,19 @@ internal sealed class MageGripRuntime
         !self.cState.recoiling && !self.cState.recoilFrozen && !self.cState.dashing &&
         !self.cState.backDashing && self.hero_state != ActorStates.no_input;
 
-    private static bool NativeCanAttack(HeroController self) => (bool)CanAttackMethod.Invoke(self, null)!;
     private static float Interval(HeroController self) => PlayerData.instance.GetBool("equippedCharm_32")
         ? self.ATTACK_COOLDOWN_TIME_CH : self.ATTACK_COOLDOWN_TIME;
 
-    private void OnDoAttack(On.HeroController.orig_DoAttack orig, HeroController self)
+    /// <summary>Swallow vanilla Quick Cast spells so this runtime owns the button exclusively.</summary>
+    private void OnListenQuickCast(On.HutongGames.PlayMaker.Actions.ListenForQuickCast.orig_OnUpdate orig,
+        ListenForQuickCast self)
     {
-        if (!Active) { orig(self); return; }
-        hero = self;
-        Set(self, "attackQueuing", false);
-        if (Ready(self)) attack.Press(Time.timeAsDouble);
+        if (Active) return;
+        orig(self);
     }
 
-    private bool OnCanNailCharge(On.HeroController.orig_CanNailCharge orig, HeroController self) => !Active && orig(self);
-    private bool OnCanNailArt(On.HeroController.orig_CanNailArt orig, HeroController self) => !Active && orig(self);
+    private HeroActions Actions(HeroController self) =>
+        ((InputHandler)Field("inputHandler").GetValue(self)!).inputActions;
 
     private void OnUpdate(On.HeroController.orig_Update orig, HeroController self)
     {
@@ -135,24 +105,19 @@ internal sealed class MageGripRuntime
             attack.CancelHold(); pendingAngle = null; pendingPogo = false;
             return;
         }
-        if (!attack.Holding || ((InputHandler)Field("inputHandler").GetValue(self)!).inputActions.attack.IsPressed) return;
+        var input = Actions(self);
+        if (input.quickCast.WasPressed) attack.Press(Time.timeAsDouble);
+        if (!attack.Holding || input.quickCast.IsPressed) return;
         float angle = Direction(self);
         string levelName = angle == 90 ? "screamLevel" : angle == 270 ? "quakeLevel" : "fireballLevel";
         var release = attack.Release(Time.timeAsDouble, PlayerData.instance.GetInt("MPCharge"),
             PlayerData.instance.GetInt(levelName) > 0, runtime.ShamanMasterEnabled,
             PlayerData.instance.GetBool("equippedCharm_19"), runtime.FastCastingEnabled,
             PlayerData.instance.GetBool("equippedCharm_33"));
-        if (!NativeCanAttack(self)) return;
         if ((release == GripRelease.NormalSpell || release == GripRelease.ChargedSpell) && TrySpell(self, angle, levelName, release))
-        {
             attack.Commit(Time.timeAsDouble, Interval(self));
-            Set(self, "attack_cooldown", Interval(self));
-        }
         else if (release != GripRelease.None)
-        {
-            // Includes insufficient soul or a locked directional spell.
-            self.Attack(angle == 90 ? AttackDirection.upward : angle == 270 ? AttackDirection.downward : AttackDirection.normal);
-        }
+            FireSmall(self, angle);
     }
 
     private static float Direction(HeroController self)
@@ -165,25 +130,9 @@ internal sealed class MageGripRuntime
         return self.cState.facingRight ? 0 : 180;
     }
 
-    private void OnAttack(On.HeroController.orig_Attack orig, HeroController self, AttackDirection direction)
+    private void FireSmall(HeroController self, float angle)
     {
-        if (!Active) { orig(self, direction); return; }
-        if (!Ready(self) || !attack.CanAttack(Time.timeAsDouble) || !NativeCanAttack(self)) return;
-        hero = self;
-        float angle = direction == AttackDirection.upward ? 90 : direction == AttackDirection.downward ? 270 : Direction(self);
         if (!runtime.SpawnSmall(self, angle)) return;
-        // The original update loop still owns attack recovery and decrements these timers.
-        // Replacing Attack avoids both StartSlash and Grubberfly's extra nail beam.
-        // Vanilla CancelAttack/CancelDownAttack dereference slashComponent even though no slash started.
-        Set(self, "slashComponent", Field(angle == 90 ? "upSlash" : angle == 270 ? "downSlash" : "normalSlash").GetValue(self)!);
-        Set(self, "wallSlashing", false);
-        self.cState.attacking = true;
-        self.cState.upAttacking = angle == 90;
-        self.cState.downAttacking = angle == 270;
-        Set(self, "attack_time", 0f);
-        Set(self, "attackDuration", PlayerData.instance.GetBool("equippedCharm_32") ? self.ATTACK_DURATION_CH : self.ATTACK_DURATION);
-        Set(self, "attack_cooldown", Interval(self));
-        Set(self, "attackQueuing", false);
         attack.Commit(Time.timeAsDouble, Interval(self));
         pendingAngle = angle;
     }
