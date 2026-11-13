@@ -137,4 +137,20 @@ public class MageGripTests
     [InlineData(true, false, false, 3)] [InlineData(true, true, true, 7)]
     public void HalfNailSoulIncludesCharmsAndReserve(bool full, bool catcher, bool eater, double expected) =>
         Assert.Equal(expected, GripAttack.Soul(full, catcher, eater));
+
+    [Theory]
+    [InlineData(0, null)]
+    [InlineData(1, "Fireball 1")]
+    [InlineData(2, "Fireball 1")]
+    [InlineData(99, "Fireball 1")]
+    public void SmallShotsAlwaysUseWhiteVengefulSpirit(int level, string? state) =>
+        Assert.Equal(state, GripProjectiles.SmallShotState(level));
+
+    [Theory]
+    [InlineData(0, null)]
+    [InlineData(1, "Fireball 1")]
+    [InlineData(2, "Fireball 2")]
+    [InlineData(99, "Fireball 2")]
+    public void ChargedFireballsUseUnlockedTier(int level, string? state) =>
+        Assert.Equal(state, GripProjectiles.ChargedFireballState(level));
 }

@@ -24,6 +24,8 @@ public sealed class SpellRuntime : MonoBehaviour
     private bool collector;
     private bool damageHooks;
     private MageGripRuntime? grip;
+    private ShadowChainRuntime? shadowChain;
+    private CharmNotchRuntime? notches;
     private readonly SoulAccumulator gripSoul = new SoulAccumulator();
     private HeroController? hero;
     private Settings settings = new Settings();
@@ -50,12 +52,15 @@ public sealed class SpellRuntime : MonoBehaviour
         ResetAll();
         SetCollector(settings.SoulCollectorEnabled);
         SetGrip(settings.MageGripEnabled);
+        SetShadowChain(true);
+        InstallNotches();
         ProjectileInteractions.Install();
     }
 
     internal void ApplySettings(Settings value)
     {
         grip?.Reset();
+        shadowChain?.Reset();
         settings = value;
         SetCollector(value.SoulCollectorEnabled);
         SetGrip(value.MageGripEnabled);
@@ -87,6 +92,20 @@ public sealed class SpellRuntime : MonoBehaviour
         ResetSoul();
     }
 
+    private void InstallNotches()
+    {
+        if (notches != null) return;
+        notches = new CharmNotchRuntime(() => settings.CharmNotchTotal);
+        notches.Install();
+    }
+
+    public void SetShadowChain(bool enabled)
+    {
+        if (!installed || enabled == (shadowChain != null)) return;
+        if (enabled) { shadowChain = new ShadowChainRuntime(this); shadowChain.Install(); }
+        else { shadowChain?.Uninstall(); shadowChain = null; }
+    }
+
     private void RefreshDamageHooks()
     {
         bool needed = collector || grip != null;
@@ -112,6 +131,9 @@ public sealed class SpellRuntime : MonoBehaviour
     {
         if (!installed) return;
         On.HeroController.QuakeInvuln -= OnQuakeInvuln;
+        SetShadowChain(false);
+        notches?.Uninstall();
+        notches = null;
         SetGrip(false);
         SetCollector(false);
         ProjectileInteractions.Uninstall();
@@ -140,6 +162,7 @@ public sealed class SpellRuntime : MonoBehaviour
     private void ResetAll()
     {
         grip?.Reset();
+        shadowChain?.Reset();
         SpellProjectile.RetireSmall();
         ChargedSpellEffect.RestoreAll();
         ResetSoul();
