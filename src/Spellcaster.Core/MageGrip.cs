@@ -8,10 +8,12 @@ public enum GripRelease { None, SmallProjectile, NormalSpell, ChargedSpell }
 /// Quick Cast charge, independent of render/physics frame partitioning.
 /// Tap (&lt; <see cref="TapSeconds"/>) fires a small shot. Holding past the tap
 /// window but not to <see cref="ChargeSeconds"/> releases nothing, like an
-/// unfinished vanilla nail art. At 0.675s the first charge is stored for as
+/// unfinished vanilla nail art. At 0.45s the first charge is stored for as
 /// long as the button stays held; Shaman Master then stores a second charge
-/// at 2.25s (1.65s with Shaman Stone). Nailmaster's Glory does not shorten
-/// these times.
+/// at 1.5s (1.1s with Shaman Stone). Nailmaster's Glory does not shorten
+/// these times. Fast Casting multiplies only the second total threshold by 1.5.
+/// The first store is unaffected by either modifier. Glow begins at 0.2s of
+/// accumulated gameplay time; the second flash also requires its soul cost.
 /// </summary>
 public sealed class GripAttack
 {
@@ -23,8 +25,8 @@ public sealed class GripAttack
     }
 
     public const double TapSeconds = 0.2;
-    public const double GlowSeconds = 0.3;
-    public const double ChargeSeconds = 0.675;
+    public const double GlowSeconds = 0.2;
+    public const double ChargeSeconds = 0.45;
     public const int SoulCost = 25;
     private double? pressedAt;
     private double nextAttack;
@@ -116,7 +118,7 @@ public sealed class GripAttack
     }
 
     public static double SecondChargeSeconds(bool shamanStone, bool fastCasting) =>
-        (shamanStone ? 1.65 : 2.25) * (fastCasting ? 1.5 : 1);
+        (shamanStone ? 1.1 : 1.5) * (fastCasting ? 1.5 : 1);
 
     public static int Cost(GripRelease release, bool spellTwister = false) => release switch
     {

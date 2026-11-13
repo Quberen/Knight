@@ -29,7 +29,7 @@ public sealed class SpellcasterMod : Modding.Mod, ITogglableMod, IGlobalSettings
     private LocalSettings local = new LocalSettings();
     private SpellRuntime? runtime;
     public SpellcasterMod() : base("Spellcaster") { }
-    public override string GetVersion() => "0.6.4";
+    public override string GetVersion() => "0.6.5";
     public bool ToggleButtonInsideMenu => false;
 
     public override void Initialize()

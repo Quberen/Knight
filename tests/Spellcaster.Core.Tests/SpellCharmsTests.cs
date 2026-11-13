@@ -15,8 +15,8 @@ public class SpellCharmsTests
         {
             string grip = SpellCharms.DisplayDescription(41, chinese);
             string shaman = SpellCharms.DisplayDescription(42, chinese);
-            foreach (string value in new[] { "0.675", "0.3", "25", "×2" }) Assert.Contains(value, grip);
-            foreach (string value in new[] { "2.25", "1.65", "3.375", "2.475", "×2", "×1.45", "48", "36" }) Assert.Contains(value, shaman);
+            foreach (string value in new[] { "0.45", "0.2", "25", "×2" }) Assert.Contains(value, grip);
+            foreach (string value in new[] { "1.5", "1.1", "2.25", "1.65", "×2", "×1.45", "48", "36" }) Assert.Contains(value, shaman);
             Assert.Contains(chinese ? "原版" : "vanilla", grip);
             Assert.Contains(chinese ? "暗影之魂" : "Shade Soul", grip);
             Assert.Contains(chinese ? "只有第二段" : "only the second", shaman);
