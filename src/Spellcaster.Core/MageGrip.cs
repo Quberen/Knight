@@ -95,3 +95,20 @@ public sealed class GripRecoil
     public void Land() => Reset();
     public void Reset() => DownShots = 0;
 }
+
+/// <summary>
+/// Small shots always use the white Vengeful Spirit prefab, even after Shade Soul is unlocked.
+/// Charged attack-key fireballs keep the unlocked tier.
+/// </summary>
+public static class GripProjectiles
+{
+    public const string VengefulSpiritState = "Fireball 1";
+    public const string ShadeSoulState = "Fireball 2";
+
+    public static string? SmallShotState(int fireballLevel) =>
+        fireballLevel < 1 ? null : VengefulSpiritState;
+
+    public static string? ChargedFireballState(int fireballLevel) =>
+        fireballLevel < 1 ? null : fireballLevel > 1 ? ShadeSoulState : VengefulSpiritState;
+}
+

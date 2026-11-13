@@ -14,6 +14,8 @@ public sealed class Settings
     public bool ShamanMasterEnabled;
     public int ShamanMasterNotchCost = 3;
     public bool FastCastingEnabled;
+    // 0 = use earned vanilla notches; 12–16 = requested total (never below earned, cap 16).
+    public int CharmNotchTotal;
     // null: use the live vanilla INVUL_TIME_QUAKE at each dive.
     public double? QuakeInvulnerabilitySeconds;
 }
@@ -23,7 +25,7 @@ public sealed class SpellcasterMod : Modding.Mod, ITogglableMod, IGlobalSettings
     private Settings settings = new Settings();
     private SpellRuntime? runtime;
     public SpellcasterMod() : base("Spellcaster") { }
-    public override string GetVersion() => "0.3.0";
+    public override string GetVersion() => "0.4.0";
     public bool ToggleButtonInsideMenu => false;
 
     public override void Initialize()
@@ -34,11 +36,13 @@ public sealed class SpellcasterMod : Modding.Mod, ITogglableMod, IGlobalSettings
         UnityEngine.Object.DontDestroyOnLoad(host);
         runtime = host.AddComponent<SpellRuntime>();
         runtime.Install(settings);
-        Log("Stage 3 initialized; collector=" + settings.SoulCollectorEnabled
+        Log("Stage 4 (Shadow Chain) initialized; collector=" + settings.SoulCollectorEnabled
             + " grip=" + settings.MageGripEnabled
             + " shaman=" + settings.ShamanMasterEnabled
+            + " shadowChain=Dashmaster+ShamanStone"
             + " notches(grip=" + settings.MageGripNotchCost
-            + ", shaman=" + settings.ShamanMasterNotchCost + ")"
+            + ", shaman=" + settings.ShamanMasterNotchCost
+            + ", charmTotal=" + (settings.CharmNotchTotal == 0 ? "vanilla" : settings.CharmNotchTotal.ToString()) + ")"
             + " fastCast=" + settings.FastCastingEnabled
             + " quakeInvuln=" + (settings.QuakeInvulnerabilitySeconds.HasValue
                 ? settings.QuakeInvulnerabilitySeconds.Value.ToString() : "native")
@@ -65,6 +69,7 @@ public sealed class SpellcasterMod : Modding.Mod, ITogglableMod, IGlobalSettings
     {
         value.MageGripNotchCost = Math.Max(1, Math.Min(2, value.MageGripNotchCost));
         value.ShamanMasterNotchCost = Math.Max(1, Math.Min(5, value.ShamanMasterNotchCost));
+        value.CharmNotchTotal = CharmNotches.ClampTotal(value.CharmNotchTotal);
         if (value.QuakeInvulnerabilitySeconds.HasValue &&
             !QuakeInvulnerability.IsValid(value.QuakeInvulnerabilitySeconds.Value))
             value.QuakeInvulnerabilitySeconds = null;
@@ -96,6 +101,11 @@ public sealed class SpellcasterMod : Modding.Mod, ITogglableMod, IGlobalSettings
             "Temporary: second charge time x1.5 ONLY. No damage, interval or other spell changes.",
             i => { runtime?.ResetCharge(); settings.FastCastingEnabled = i == 1; },
             () => settings.FastCastingEnabled ? 1 : 0),
+        new IMenuMod.MenuEntry("Charm notches / 符咒槽总数",
+            new[] { "Vanilla / 原版", "12", "13", "14", "15", "16" },
+            "Total equipped-charm notches, up to 16. Vanilla uses what you have earned (cap 11). Never below earned. Implemented via GetPlayerIntHook only: PlayerData.charmSlots is never written, so disabling the mod leaves a vanilla save.",
+            i => settings.CharmNotchTotal = i == 0 ? 0 : i + 11,
+            () => settings.CharmNotchTotal == 0 ? 0 : settings.CharmNotchTotal - 11),
         new IMenuMod.MenuEntry("Quake invulnerability / 下砸无敌秒数",
             new[] { "Native runtime / 原版运行时", "0", "0.2", "0.4", "0.6", "0.8", "1.0", CustomLabel() },
             "Global, all dives. Settings JSON accepts any finite nonnegative duration; native floor breaking is preserved. Default is the live vanilla INVUL_TIME_QUAKE.",

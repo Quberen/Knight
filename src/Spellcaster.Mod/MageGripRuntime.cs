@@ -296,9 +296,10 @@ internal sealed class MageGripRuntime
 
     internal static (GameObject? Prefab, float Speed) FindProjectile(HeroController self)
     {
-        if (PlayerData.instance.GetInt("fireballLevel") < 1) return (null, 0);
+        // Small shots always use white Vengeful Spirit (Fireball 1), even with Shade Soul unlocked.
+        string? state = GripProjectiles.SmallShotState(PlayerData.instance.GetInt("fireballLevel"));
+        if (state == null) return (null, 0);
         var control = PlayMakerFSM.FindFsmOnGameObject(self.gameObject, "Spell Control");
-        string state = PlayerData.instance.GetInt("fireballLevel") > 1 ? "Fireball 2" : "Fireball 1";
         var top = control?.FsmStates.FirstOrDefault(s => s.Name == state)?.Actions
             .OfType<SpawnObjectFromGlobalPool>().FirstOrDefault()?.gameObject.Value;
         if (top == null) return (null, 0);
