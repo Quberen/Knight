@@ -26,11 +26,13 @@ public sealed class SpellRuntime : MonoBehaviour
     private MageGripRuntime? grip;
     private ShadowChainRuntime? shadowChain;
     private CharmNotchRuntime? notches;
+    private CharmRuntime? charms;
     private readonly SoulAccumulator gripSoul = new SoulAccumulator();
     private HeroController? hero;
     private Settings settings = new Settings();
     private static readonly FieldInfo FlukeDamage = typeof(SpellFluke).GetField("damage", BindingFlags.Instance | BindingFlags.NonPublic)!;
-    internal bool ShamanMasterEnabled => settings.ShamanMasterEnabled;
+    internal bool ShamanMasterEnabled => charms != null && charms.ShamanEquipped;
+    internal CharmRuntime? Charms => charms;
     internal bool FastCastingEnabled => settings.FastCastingEnabled;
     public bool CollectorEnabled => collector;
     public bool GripEnabled => grip != null;
@@ -50,11 +52,17 @@ public sealed class SpellRuntime : MonoBehaviour
         ModHooks.BeforePlayerDeadHook += ResetAll;
         UnityEngine.SceneManagement.SceneManager.activeSceneChanged += OnSceneChanged;
         ResetAll();
-        SetCollector(settings.SoulCollectorEnabled);
-        SetGrip(settings.MageGripEnabled);
         SetShadowChain(true);
         InstallNotches();
         ProjectileInteractions.Install();
+        // CharmRuntime applies Grip / Collector / Shaman from local equipped flags.
+    }
+
+    internal void InstallCharms(Func<LocalSettings> local, Action<LocalSettings> setLocal)
+    {
+        if (charms != null) return;
+        charms = new CharmRuntime(this, () => settings, local, setLocal);
+        charms.Install();
     }
 
     internal void ApplySettings(Settings value)
@@ -62,8 +70,7 @@ public sealed class SpellRuntime : MonoBehaviour
         grip?.Reset();
         shadowChain?.Reset();
         settings = value;
-        SetCollector(value.SoulCollectorEnabled);
-        SetGrip(value.MageGripEnabled);
+        charms?.ApplySettings();
     }
 
     internal void ResetCharge() => grip?.Reset();
@@ -131,6 +138,8 @@ public sealed class SpellRuntime : MonoBehaviour
     {
         if (!installed) return;
         On.HeroController.QuakeInvuln -= OnQuakeInvuln;
+        charms?.Uninstall();
+        charms = null;
         SetShadowChain(false);
         notches?.Uninstall();
         notches = null;
