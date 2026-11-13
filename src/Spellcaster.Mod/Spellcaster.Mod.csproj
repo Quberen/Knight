@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net472</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <ProjectReference Include="../Spellcaster.Core/Spellcaster.Core.csproj" />
+    <Reference Include="Assembly-CSharp;Assembly-CSharp-firstpass;PlayMaker;MMHOOK_Assembly-CSharp;MMHOOK_PlayMaker;MonoMod.RuntimeDetour;MonoMod.Utils;UnityEngine;UnityEngine.CoreModule;UnityEngine.Physics2DModule;UnityEngine.ParticleSystemModule;UnityEngine.AnimationModule;UnityEngine.AudioModule;UnityEngine.IMGUIModule;UnityEngine.InputLegacyModule;UnityEngine.UI">
+      <HintPath>$(GameManaged)/%(Identity).dll</HintPath><Private>false</Private>
+    </Reference>
+  </ItemGroup>
+  <Target Name="CheckGameReferences" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(GameManaged)/MMHOOK_PlayMaker.dll')" Text="Install verified Modding API v77 into the 1.5.78.11833 Managed directory first." />
+  </Target>
+</Project>

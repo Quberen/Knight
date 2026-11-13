@@ -1,61 +1,55 @@
-# 空洞骑士法术流护符 Mod
+# 空洞骑士法术流护符 Mod（Spellcaster）
 
-设计以 [DESIGN.md](DESIGN.md) 为准。本阶段范围为开发顺序第 1 项：过热系统、按 castId 回魂、灵魂收集者。
+设计以 [DESIGN.md](DESIGN.md) 为准。当前完成了开发顺序第 1 项：全局过热、按施法实例（castId）结算的法术回魂，以及灵魂收集者的临时开关。
 
-## 当前状态：因 Modding API 版本不匹配停止
+## 环境
 
-2026-11-13 核验本机游戏及 hk-modding/api 的公开 GitHub Releases，触发任务中的明确要求：“如果最新游戏版本没有对应的 API，停下来写清楚原因。”
+- 游戏版本：Hollow Knight **1.5.78.11833**（Unity 2020.2.2，Linux）
+- Modding API：官方 [1.5.78.11833-77](https://github.com/hk-modding/api/releases/tag/1.5.78.11833-77)（v77）
+- 本仓库默认游戏目录：`/home/box/games/HollowKnight-1578`
+- 构建需要 .NET SDK 8（`global.json` 锁定 8.0.428）
 
-| 项目 | 核验结果 |
-| --- | --- |
-| 游戏目录 | `/home/box/games/HollowKnight` |
-| 本机游戏版本 | `1.5.12620` |
-| Unity 版本 | `6000.0.61f1`（globalgamemanagers 中的字符串） |
-| 最新公开 API | `1.5.78.11833-77` / ModdingAPI v77 |
-| API 声明支持的游戏版本 | `1.5.78.11833` |
-| 匹配本机版本的公开 Release | 未找到；查询返回的全部 22 个 Release 均无 `12620` |
-| 已安装的 API / mod | 本次未安装 |
+新版 1.5.12620 没有对应的官方 API，本 mod 不支持该版本。
 
-本机版本由 `Assembly-CSharp.dll` 的 UTF-16LE 字符串和 `globalgamemanagers` 的字符串交叉核对。不能将面向旧版游戏的补丁程序集当作新版 API 覆盖安装；当前没有满足要求的 Release，因此无法确定匹配的目标框架及程序集引用，也无法按要求构建和安装可用 mod。
+## 已实现
 
-来源：
+- 过热 0–100：普通法术 +25，停手 0.5 秒后每秒 −20；数值与帧率无关，按实际经过时间计算。
+- 法术回魂：每段命中 `11 × (1 − 过热/100)`，同一次施法第 4 段起减半；按 castId 去重，不按碰撞体。可叠加捕魂者 / 噬魂者。
+- 接入原版火球、尖啸、下砸（下落/落地分段）和吸虫法术；在确认扣血后才结算。对象池复用不会串用上一次的施法记录。
+- 灵魂收集者：本阶段为模组菜单里的临时开关（暂不占槽、无独立护符图标），开启后应用上述回魂，并把骨钉回魂减半。
+- 过热反馈（仅原版素材）：魂槽液体随过热由白变橙红；超过 80 时角色使用亡者之怒红光；冷却到 0 时魂槽播放一次 White Flash。
+- 卸下 / 关闭开关时注销回魂钩子并清空施法记录，保留或按场景、读档、死亡和新游戏重置过热。
 
-- [官方 Releases](https://github.com/hk-modding/api/releases)
-- [v77 发布说明及 Linux 安装包](https://github.com/hk-modding/api/releases/tag/1.5.78.11833-77)：说明明确写明适用于 Hollow Knight 1.5.78.11833。
-- [完整发布列表查询](https://api.github.com/repos/hk-modding/api/releases?per_page=100&page=1)：本次返回 22 项，包含公开预发布（若存在）；未发现匹配版本。
-
-## 复核方法
-
-以下命令仅读取游戏文件：
+## 构建与安装
 
 ```bash
-strings -el /home/box/games/HollowKnight/hollow_knight_Data/Managed/Assembly-CSharp.dll | rg '1\.5\.12620'
-strings /home/box/games/HollowKnight/hollow_knight_Data/globalgamemanagers | rg '1\.5\.12620|6000\.0\.61f1'
-sha256sum /home/box/games/HollowKnight/hollow_knight_Data/Managed/Assembly-CSharp.dll
-sha256sum /home/box/games/HollowKnight/hollow_knight_Data/globalgamemanagers
+# 安装 API（只需一次；会备份原版 Assembly-CSharp.dll）
+python3 scripts/install-api.py /path/to/HollowKnight-1578
+
+# 编译、跑测试并安装到游戏 Mods 目录
+scripts/install-mod.sh /path/to/HollowKnight-1578
 ```
 
-本次读取的文件 SHA-256：
+只编译和测试：
 
-```text
-Assembly-CSharp.dll
-5c84b8e59dd669c48db1fc426541d0d96643f59d35a72534b21fead7c96a3086
-
-globalgamemanagers
-b73a9901b5de07c2cbb526ec9b492c7cce1fb9daa0e83a9f6640c8f09acb9011
+```bash
+scripts/build.sh -p:GameDir=/path/to/HollowKnight-1578
 ```
 
-## 构建、测试与安装
+安装位置：`<游戏>/hollow_knight_Data/Managed/Mods/Spellcaster/`。
 
-当前没有 C# 工程、构建产物或可执行的构建/安装命令；未安装 .NET SDK，未运行 xUnit 或游戏实测。测试状态为“未执行”，不是通过。
+进游戏后打开 Mod 菜单，把 “Soul Collector / 灵魂收集者” 设为开启。
 
-本次未替换任何游戏 DLL，未创建 API 备份，也未向 Mods 目录写入文件。需要先获得官方 Releases 中匹配 `1.5.12620` 的 Linux API；或者由用户另行决定是否切换游戏版本。版本匹配后才能备份原版程序集、安装 API，并按实际 API 目标框架创建工程和配置引用。
+## 测试
 
-## 尚未实现
+独立数值测试（不启动游戏）应全部通过，覆盖公式、第 4 段减半、护符叠加、冷却时序、不同帧率划分和 castId 去重。
 
-- 第 1 项：全局过热、按 castId 的回魂与去重、灵魂收集者临时开关或自定义护符、相关原版素材反馈。
-- 独立纯数值类及 xUnit 测试：公式数值、第 4 段起减半、冷却时序、castId 去重。
-- mod 编译、安装及游戏内验证。
-- DESIGN.md 开发顺序第 2–4 项均未开展，仍在本阶段范围之外。
+游戏内验证尚未完整做完，需要重点看：多段法术是否重复回魂、场景切换和读档后状态、关闭开关后钩子是否还在。
 
-仓库在任务开始时已有 `.git`，尚无提交。本次仅记录原有设计、任务说明及兼容性阻塞原因，不推送远端。
+## 尚未实现（开发顺序第 2–4 项）
+
+- 法师之握（含方向性小复仇之魂、pogo、攻击键蓄力）、拉杆和破墙补丁
+- 萨满大师挪到攻击键、下砸无敌帧参数化
+- 极速施法、改进版国王之魂、影魂连闪、冷静施法（可选）
+- 灵魂收集者改为正式护符（槽位、获取位置、图标）
+- 法师之握槽位数（1 或 2）仍待定
