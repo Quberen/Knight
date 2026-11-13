@@ -52,7 +52,7 @@ public sealed class SpellcasterMod : Modding.Mod, ITogglableMod, IGlobalSettings
     public List<IMenuMod.MenuEntry> GetMenuData(IMenuMod.MenuEntry? toggleButtonEntry) => new List<IMenuMod.MenuEntry>
     {
         new IMenuMod.MenuEntry("Soul Collector / 灵魂收集者", new[] { "Off / 关闭", "On / 开启" },
-            "Stage 1 temporary charm switch; spell soul gain, half nail soul. No notch cost yet.",
+            "Temporary charm: 9 soul per spell hit (flat, stacks with Catcher/Eater), half nail soul. No notch cost yet.",
             i => { settings.SoulCollectorEnabled = i == 1; if (runtime != null) runtime.SetCollector(i == 1); },
             () => settings.SoulCollectorEnabled ? 1 : 0),
         new IMenuMod.MenuEntry("Mage's Grip / 法师之握", new[] { "Off / 关闭", "On / 开启" },

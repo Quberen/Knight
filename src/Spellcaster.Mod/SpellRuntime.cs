@@ -11,14 +11,12 @@ namespace Spellcaster.Mod;
 
 public sealed class SpellRuntime : MonoBehaviour
 {
-    private readonly HeatMeter heat = new HeatMeter();
     private readonly SoulLedger ledger = new SoulLedger();
     private readonly SoulAccumulator spellSoul = new SoulAccumulator();
     private readonly SoulAccumulator nailSoul = new SoulAccumulator();
     private readonly Dictionary<GameObject, DamageSource> sources = new Dictionary<GameObject, DamageSource>();
     private readonly List<CastRecord> casts = new List<CastRecord>();
     private readonly HashSet<long> liveCasts = new HashSet<long>();
-    private readonly HeatFeedback feedback = new HeatFeedback();
     private CastRecord? current;
     private CastRecord? spawnContext;
     private bool installed;
@@ -26,9 +24,7 @@ public sealed class SpellRuntime : MonoBehaviour
     private bool damageHooks;
     private MageGripRuntime? grip;
     private readonly SoulAccumulator gripSoul = new SoulAccumulator();
-    private double lastTime;
     private HeroController? hero;
-    public double Heat => heat.Heat;
     public bool CollectorEnabled => collector;
 
     public void Install(bool enableCollector, bool enableGrip)
@@ -119,21 +115,13 @@ public sealed class SpellRuntime : MonoBehaviour
     {
         grip?.Reset();
         SpellProjectile.RetireSmall();
-        ResetSoul(); heat.Reset(); feedback.Reset();
-        hero = null; lastTime = Time.timeAsDouble;
+        ResetSoul();
+        hero = null;
     }
 
     internal bool CanPlay => installed && GameManager.UnsafeInstance != null &&
         GameManager.UnsafeInstance.IsGameplayScene() && !GameManager.UnsafeInstance.isPaused &&
         GameManager.UnsafeInstance.gameState == GameState.PLAYING && hero != null && !hero.cState.dead;
-
-    private void AdvanceClock()
-    {
-        double now = Time.timeAsDouble;
-        double elapsed = Math.Max(0, now - lastTime);
-        lastTime = now;
-        if (CanPlay && heat.Advance(elapsed)) feedback.FlashCooled();
-    }
 
     private void Update()
     {
@@ -144,8 +132,6 @@ public sealed class SpellRuntime : MonoBehaviour
             ResetAll();
             hero = nextHero;
         }
-        AdvanceClock();
-        if (CanPlay) feedback.Update(hero!, heat.Heat);
         CleanupCasts();
     }
 
@@ -176,8 +162,6 @@ public sealed class SpellRuntime : MonoBehaviour
 
     private CastRecord BeginCast(CastKind kind = CastKind.NormalSpell)
     {
-        AdvanceClock();
-        heat.AddCast(kind);
         var cast = new CastRecord(ledger.BeginCast(), kind);
         if (kind != CastKind.SmallProjectile) current = cast;
         casts.Add(cast);
@@ -318,7 +302,6 @@ public sealed class SpellRuntime : MonoBehaviour
         if (!CanPlay || PlayerData.instance == null) return;
         bool small = source.Cast.Kind == CastKind.SmallProjectile;
         if (small ? grip == null : !collector) return;
-        AdvanceClock();
         var data = PlayerData.instance;
         int segment = source.Segment(targetId, Time.fixedTimeAsDouble);
         if (!casts.Contains(source.Cast)) return;
@@ -329,7 +312,7 @@ public sealed class SpellRuntime : MonoBehaviour
             amount = GripAttack.Soul(data.GetInt("MPCharge") >= data.GetInt("maxMP"),
                 data.GetBool("equippedCharm_20"), data.GetBool("equippedCharm_21"));
         }
-        else amount = ledger.Hit(source.Cast.Id, segment, heat.Heat,
+        else amount = ledger.Hit(source.Cast.Id, segment,
             data.GetBool("equippedCharm_20"), data.GetBool("equippedCharm_21"));
         var accumulator = small ? gripSoul : spellSoul;
         if (data.GetInt("MPCharge") >= data.GetInt("maxMP") && data.GetInt("MPReserve") >= data.GetInt("MPReserveMax"))
