@@ -109,9 +109,13 @@ public class MageGripTests
             return y;
         }
         Assert.Equal(Simulate(1), Simulate(fps), 8);
-        var attack = new GripAttack(); attack.Press(0);
+        var attack = new GripAttack(); attack.Tick(0, true, true);
         double elapsed = 0;
-        for (int i = 0; i < fps; i++) elapsed += .45 / fps;
+        for (int i = 0; i < fps; i++)
+        {
+            elapsed += .45 / fps;
+            attack.Tick(elapsed, true, true, deltaSeconds: .45 / fps);
+        }
         Assert.Equal(GripRelease.NormalSpell, attack.Release(elapsed, 25, true));
     }
 
@@ -127,7 +131,8 @@ public class MageGripTests
     [InlineData(.1, 0, false, GripRelease.SmallProjectile)]
     public void ReleaseRequiresThresholdSoulAndUnlock(double held, int soul, bool unlocked, GripRelease expected)
     {
-        var attack = new GripAttack(); attack.Press(2);
+        var attack = new GripAttack(); attack.Tick(2, true, true);
+        attack.Tick(2 + held, true, true);
         Assert.Equal(expected, attack.Release(2 + held, soul, unlocked));
         Assert.Equal(GripRelease.None, attack.Release(3, 99, true));
     }
@@ -138,9 +143,9 @@ public class MageGripTests
     {
         var attack = new GripAttack(); attack.Commit(1, interval);
         Assert.False(attack.CanAttack(1 + interval - .00001));
-        attack.Press(1); Assert.False(attack.Holding);
+        attack.Tick(1, true, true); Assert.True(attack.Holding); // cooldown gates release, not charging
         Assert.True(attack.CanAttack(1 + interval));
-        attack.Press(1 + interval); Assert.True(attack.Holding);
+        attack.Tick(1 + interval, true, true); Assert.True(attack.Holding);
         attack.CancelHold(); Assert.False(attack.Holding);
         attack.Reset(); Assert.True(attack.CanAttack(0));
     }
@@ -190,7 +195,8 @@ public class MageGripTests
     public void StoredTierAndWindingFollowHoldTime(double held, int tier, bool winding)
     {
         var attack = new GripAttack();
-        attack.Press(1);
+        attack.Tick(1, true, true);
+        attack.Tick(1 + held, true, true);
         Assert.Equal(tier, attack.StoredTier(1 + held, shamanMaster: true));
         Assert.Equal(winding, attack.Winding(1 + held, shamanMaster: true));
     }
@@ -199,12 +205,15 @@ public class MageGripTests
     public void WindingForSecondChargeAfterFirstIsStored()
     {
         var attack = new GripAttack();
-        attack.Press(0);
+        attack.Tick(0, true, true);
+        attack.Tick(0.3, true, true);
         Assert.True(attack.Winding(0.3, shamanMaster: true));
         Assert.True(attack.Winding(0.3, shamanMaster: false)); // first-charge winding is independent of Shaman Master
         // After first charge, only Shaman Master keeps winding toward the second flash.
+        attack.Tick(0.8, true, true);
         Assert.False(attack.Winding(0.8, shamanMaster: false));
         Assert.True(attack.Winding(0.8, shamanMaster: true));
+        attack.Tick(1.5, true, true);
         Assert.False(attack.Winding(1.5, shamanMaster: true));
     }
 
@@ -259,8 +268,10 @@ public class MageGripTests
     public void FirstTierRemainsFixedAndStoredWithEverySecondTierModifier(bool stone, bool fast)
     {
         var attack = new GripAttack();
-        attack.Press(0);
+        attack.Tick(0, true, true);
+        attack.Tick(.45, true, true);
         Assert.Equal(1, attack.StoredTier(.45, true, stone, fast));
+        attack.Tick(3600, true, true);
         Assert.Equal(2, attack.StoredTier(3600, true, stone, fast));
         Assert.Equal(GripRelease.ChargedSpell, attack.Release(3600, 48, true, true, stone, fast));
     }
