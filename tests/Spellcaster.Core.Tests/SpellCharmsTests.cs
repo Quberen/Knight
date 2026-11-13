@@ -9,6 +9,22 @@ namespace Spellcaster.Core.Tests;
 public class SpellCharmsTests
 {
     [Fact]
+    public void ChargeDescriptionsExplainBothTiersAndNewTimesInBothLanguages()
+    {
+        foreach (bool chinese in new[] { true, false })
+        {
+            string grip = SpellCharms.DisplayDescription(41, chinese);
+            string shaman = SpellCharms.DisplayDescription(42, chinese);
+            foreach (string value in new[] { "0.675", "0.3", "25", "×2" }) Assert.Contains(value, grip);
+            foreach (string value in new[] { "2.25", "1.65", "3.375", "2.475", "×2", "×1.45", "48", "36" }) Assert.Contains(value, shaman);
+            Assert.Contains(chinese ? "原版" : "vanilla", grip);
+            Assert.Contains(chinese ? "暗影之魂" : "Shade Soul", grip);
+            Assert.Contains(chinese ? "只有第二段" : "only the second", shaman);
+            Assert.Contains(chinese ? "魂足够" : "enough soul", shaman);
+        }
+    }
+
+    [Fact]
     public void IdsAreFortyOneThroughFortyThreeAndDoNotOverlapVanilla()
     {
         Assert.Equal(new[] { 41, 42, 43 }, SpellCharms.Ids);

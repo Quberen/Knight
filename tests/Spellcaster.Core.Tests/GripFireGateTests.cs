@@ -8,6 +8,29 @@ public class GripFireGateTests
     private static GripFireGate Clean => new GripFireGate { Gameplay = true, CanInput = true };
 
     [Theory]
+    [InlineData("immediate")] [InlineData("mid-air")] [InlineData("after dash")]
+    [InlineData(nameof(GripFireGate.Dashing))] [InlineData(nameof(GripFireGate.Attacking))]
+    [InlineData(nameof(GripFireGate.Recoiling))]
+    public void SecondStoreKeepsKindAtReleaseAndDeferredFlush(string scenario)
+    {
+        object boxed = Clean;
+        var field = typeof(GripFireGate).GetField(scenario);
+        field?.SetValue(boxed, true);
+        var gate = (GripFireGate)boxed;
+        var attack = new GripAttack();
+        attack.Tick(0, true, true); attack.Tick(2.25, true, true);
+        // Attack/recoil pause a completed store; dash permits accumulation.
+        attack.Tick(2.25, true, scenario != nameof(GripFireGate.Attacking) && scenario != nameof(GripFireGate.Recoiling));
+        var release = attack.Release(2.25, 48, true, true, canFire: gate.Allowed, deferCharged: true);
+        Assert.Equal(GripRelease.ChargedSpell, release);
+        var pending = new GripPendingCast(); pending.Queue(2.25, 270, release);
+        if (!gate.Allowed) Assert.False(pending.TryGet(2.3, out _, out _, false));
+        Assert.True(pending.TryGet(2.4, out int direction, out var flushed, Clean.Allowed));
+        Assert.Equal(270, direction);
+        Assert.Equal(CastKind.ChargedSpell, GripAttack.Kind(flushed));
+    }
+
+    [Theory]
     [InlineData(nameof(GripFireGate.Gameplay), false)]
     [InlineData(nameof(GripFireGate.CanInput), false)]
     [InlineData(nameof(GripFireGate.Paused), true)]
@@ -35,7 +58,7 @@ public class GripFireGateTests
         typeof(GripFireGate).GetField(field)!.SetValue(boxed, value);
         var gate = (GripFireGate)boxed;
         Assert.False(gate.Allowed);
-        foreach (double duration in new[] { .1, .45, 1.5 })
+        foreach (double duration in new[] { .1, .675, 2.25 })
         {
             var attack = new GripAttack();
             attack.Tick(0, true, true);
@@ -71,8 +94,8 @@ public class GripFireGateTests
     }
 
     [Theory]
-    [InlineData(.45, GripRelease.NormalSpell)]
-    [InlineData(1.5, GripRelease.ChargedSpell)]
+    [InlineData(.675, GripRelease.NormalSpell)]
+    [InlineData(2.25, GripRelease.ChargedSpell)]
     public void ChargedIntentWaitsThroughDashAndExpiresEvenWhileBlocked(double duration, GripRelease expected)
     {
         var gate = Clean;
