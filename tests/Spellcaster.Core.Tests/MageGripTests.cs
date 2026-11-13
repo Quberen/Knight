@@ -113,8 +113,8 @@ public class MageGripTests
         double elapsed = 0;
         for (int i = 0; i < fps; i++)
         {
-            elapsed += .675 / fps;
-            attack.Tick(elapsed, true, true, deltaSeconds: .675 / fps);
+            elapsed += .45 / fps;
+            attack.Tick(elapsed, true, true, deltaSeconds: .45 / fps);
         }
         Assert.Equal(GripRelease.NormalSpell, attack.Release(elapsed, 25, true));
     }
@@ -122,12 +122,12 @@ public class MageGripTests
     [Theory]
     [InlineData(.199, 25, true, GripRelease.SmallProjectile)] // genuine tap
     [InlineData(.2, 25, true, GripRelease.None)]             // past tap window, not yet charged: no-op
-    [InlineData(.674, 25, true, GripRelease.None)]
-    [InlineData(.675, 25, true, GripRelease.NormalSpell)]
+    [InlineData(.449, 25, true, GripRelease.None)]
+    [InlineData(.45, 25, true, GripRelease.NormalSpell)]
     [InlineData(10, 25, true, GripRelease.NormalSpell)]      // stored indefinitely while held
-    [InlineData(2.25, 24, true, GripRelease.None)]            // charged but not enough soul: no fallback shot
-    [InlineData(.675, 0, true, GripRelease.None)]
-    [InlineData(.675, 25, false, GripRelease.None)]
+    [InlineData(1.5, 24, true, GripRelease.None)]            // charged but not enough soul: no fallback shot
+    [InlineData(.45, 0, true, GripRelease.None)]
+    [InlineData(.45, 25, false, GripRelease.None)]
     [InlineData(.1, 0, false, GripRelease.SmallProjectile)]
     public void ReleaseRequiresThresholdSoulAndUnlock(double held, int soul, bool unlocked, GripRelease expected)
     {
@@ -181,19 +181,19 @@ public class MageGripTests
     public void TapWindowAndChargeConstantsAreFixed()
     {
         Assert.Equal(0.2, GripAttack.TapSeconds);
-        Assert.Equal(0.3, GripAttack.GlowSeconds);
-        Assert.Equal(.675, GripAttack.ChargeSeconds);
+        Assert.Equal(0.2, GripAttack.GlowSeconds);
+        Assert.Equal(.45, GripAttack.ChargeSeconds);
     }
 
     [Theory]
     [InlineData(0.199, 0, false)]
-    [InlineData(0.2, 0, false)]
-    [InlineData(0.299, 0, false)]
-    [InlineData(0.3, 0, true)]   // independent glow threshold
-    [InlineData(.674, 0, true)]
-    [InlineData(.675, 1, true)]  // first stored; Shaman Master winds toward the second flash
-    [InlineData(2.249, 1, true)]
-    [InlineData(2.25, 2, false)]  // shaman second stored
+    [InlineData(0.2, 0, true)]
+    [InlineData(0.201, 0, true)]
+    [InlineData(0.3, 0, true)]   // winding continues after the glow threshold
+    [InlineData(.449, 0, true)]
+    [InlineData(.45, 1, true)]  // first stored; Shaman Master winds toward the second flash
+    [InlineData(1.499, 1, true)]
+    [InlineData(1.5, 2, false)]  // shaman second stored
     [InlineData(8, 2, false)]    // still stored
     public void StoredTierAndWindingFollowHoldTime(double held, int tier, bool winding)
     {
@@ -216,8 +216,8 @@ public class MageGripTests
         attack.Tick(0.8, true, true);
         Assert.False(attack.Winding(0.8, shamanMaster: false));
         Assert.True(attack.Winding(0.8, shamanMaster: true));
-        attack.Tick(2.25, true, true);
-        Assert.False(attack.Winding(2.25, shamanMaster: true));
+        attack.Tick(1.5, true, true);
+        Assert.False(attack.Winding(1.5, shamanMaster: true));
     }
 
     [Theory]
@@ -272,8 +272,8 @@ public class MageGripTests
     {
         var attack = new GripAttack();
         attack.Tick(0, true, true);
-        attack.Tick(.675, true, true);
-        Assert.Equal(1, attack.StoredTier(.675, true, stone, fast));
+        attack.Tick(.45, true, true);
+        Assert.Equal(1, attack.StoredTier(.45, true, stone, fast));
         attack.Tick(3600, true, true);
         Assert.Equal(2, attack.StoredTier(3600, true, stone, fast));
         Assert.Equal(GripRelease.ChargedSpell, attack.Release(3600, 48, true, true, stone, fast));

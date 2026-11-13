@@ -13,29 +13,34 @@ public class StageThreeTests
     {
         var attack = new GripAttack();
         attack.Tick(0, true, true);
-        attack.Tick(2.25, true, true);
-        Assert.Equal(tier, attack.StoredTier(2.25, true, soul: soul, spellTwister: twister));
-        Assert.False(attack.Winding(2.25, true, soul: soul, spellTwister: twister));
+        attack.Tick(1.5, true, true);
+        Assert.Equal(tier, attack.StoredTier(1.5, true, soul: soul, spellTwister: twister));
+        Assert.False(attack.Winding(1.5, true, soul: soul, spellTwister: twister));
+        // Soul can arrive while holding at the threshold, then fall again.
+        int cost = twister ? 36 : 48;
+        Assert.Equal(2, attack.StoredTier(1.5, true, soul: cost, spellTwister: twister));
+        Assert.False(attack.Winding(1.5, true, soul: cost, spellTwister: twister));
+        Assert.Equal(tier, attack.StoredTier(1.5, true, soul: soul, spellTwister: twister));
         var expected = tier == 2 ? GripRelease.ChargedSpell : soul >= 25 ? GripRelease.NormalSpell : GripRelease.None;
-        Assert.Equal(expected, attack.Release(2.25, soul, true, true, spellTwister: twister));
+        Assert.Equal(expected, attack.Release(1.5, soul, true, true, spellTwister: twister));
     }
 
     [Fact]
     public void SoulLossAfterSecondFlashReleasesOnlyAffordableVanillaTier()
     {
         var attack = new GripAttack();
-        attack.Tick(0, true, true); attack.Tick(2.25, true, true);
-        Assert.Equal(2, attack.StoredTier(2.25, true, soul: 48));
-        Assert.Equal(1, attack.StoredTier(2.25, true, soul: 47));
-        Assert.Equal(GripRelease.NormalSpell, attack.Release(2.25, 47, true, true));
+        attack.Tick(0, true, true); attack.Tick(1.5, true, true);
+        Assert.Equal(2, attack.StoredTier(1.5, true, soul: 48));
+        Assert.Equal(1, attack.StoredTier(1.5, true, soul: 47));
+        Assert.Equal(GripRelease.NormalSpell, attack.Release(1.5, 47, true, true));
     }
 
     [Fact]
     public void FirstStoreWithShadeSoulIsVanillaUnlockedSpell()
     {
         var attack = new GripAttack();
-        attack.Tick(0, true, true); attack.Tick(.675, true, true);
-        var release = attack.Release(.675, 99, true, true);
+        attack.Tick(0, true, true); attack.Tick(.45, true, true);
+        var release = attack.Release(.45, 99, true, true);
         Assert.Equal(GripRelease.NormalSpell, release);
         Assert.Equal(CastKind.NormalSpell, GripAttack.Kind(release));
         Assert.Equal(25, GripAttack.Cost(release));
@@ -43,10 +48,10 @@ public class StageThreeTests
     }
 
     [Theory]
-    [InlineData(false, false, 2.25)]
-    [InlineData(true, false, 1.65)]
-    [InlineData(false, true, 3.375)]
-    [InlineData(true, true, 2.475)]
+    [InlineData(false, false, 1.5)]
+    [InlineData(true, false, 1.1)]
+    [InlineData(false, true, 2.25)]
+    [InlineData(true, true, 1.65)]
     public void SecondThresholdIncludesOnlyTimeModifiers(bool stone, bool fast, double seconds)
     {
         Assert.Equal(seconds, GripAttack.SecondChargeSeconds(stone, fast), 10);
@@ -60,19 +65,19 @@ public class StageThreeTests
     }
 
     [Theory]
-    [InlineData(.674, 99, false, true, true, GripRelease.None, 0, null)]
-    [InlineData(.675, 99, false, true, true, GripRelease.NormalSpell, 25, CastKind.NormalSpell)]
-    [InlineData(2.249, 99, false, true, true, GripRelease.NormalSpell, 25, CastKind.NormalSpell)]
-    [InlineData(2.25, 48, false, true, true, GripRelease.ChargedSpell, 48, CastKind.ChargedSpell)]
-    [InlineData(2.25, 36, true, true, true, GripRelease.ChargedSpell, 36, CastKind.ChargedSpell)]
-    [InlineData(2.25, 47, false, true, true, GripRelease.NormalSpell, 25, CastKind.NormalSpell)]
-    [InlineData(2.25, 35, true, true, true, GripRelease.NormalSpell, 25, CastKind.NormalSpell)]
-    [InlineData(2.25, 25, false, true, true, GripRelease.NormalSpell, 25, CastKind.NormalSpell)]
-    [InlineData(2.25, 24, true, true, true, GripRelease.None, 0, null)]
-    [InlineData(2.25, 0, false, true, true, GripRelease.None, 0, null)]
-    [InlineData(2.25, 99, false, false, true, GripRelease.NormalSpell, 25, CastKind.NormalSpell)]
-    [InlineData(2.25, 99, false, true, false, GripRelease.None, 0, null)]
-    [InlineData(.675, 25, true, true, true, GripRelease.NormalSpell, 25, CastKind.NormalSpell)]
+    [InlineData(.449, 99, false, true, true, GripRelease.None, 0, null)]
+    [InlineData(.45, 99, false, true, true, GripRelease.NormalSpell, 25, CastKind.NormalSpell)]
+    [InlineData(1.499, 99, false, true, true, GripRelease.NormalSpell, 25, CastKind.NormalSpell)]
+    [InlineData(1.5, 48, false, true, true, GripRelease.ChargedSpell, 48, CastKind.ChargedSpell)]
+    [InlineData(1.5, 36, true, true, true, GripRelease.ChargedSpell, 36, CastKind.ChargedSpell)]
+    [InlineData(1.5, 47, false, true, true, GripRelease.NormalSpell, 25, CastKind.NormalSpell)]
+    [InlineData(1.5, 35, true, true, true, GripRelease.NormalSpell, 25, CastKind.NormalSpell)]
+    [InlineData(1.5, 25, false, true, true, GripRelease.NormalSpell, 25, CastKind.NormalSpell)]
+    [InlineData(1.5, 24, true, true, true, GripRelease.None, 0, null)]
+    [InlineData(1.5, 0, false, true, true, GripRelease.None, 0, null)]
+    [InlineData(1.5, 99, false, false, true, GripRelease.NormalSpell, 25, CastKind.NormalSpell)]
+    [InlineData(1.5, 99, false, true, false, GripRelease.None, 0, null)]
+    [InlineData(.45, 25, true, true, true, GripRelease.NormalSpell, 25, CastKind.NormalSpell)]
     public void ReleaseSelectsOneAffordableTier(double seconds, int soul, bool twister, bool master, bool unlocked,
         GripRelease expected, int cost, CastKind? kind)
     {
