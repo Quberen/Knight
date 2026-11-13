@@ -102,11 +102,15 @@ public class MageGripTests
     }
 
     [Theory]
-    [InlineData(.449, 25, true, GripRelease.SmallProjectile)]
+    [InlineData(.199, 25, true, GripRelease.SmallProjectile)] // genuine tap
+    [InlineData(.2, 25, true, GripRelease.None)]             // past tap window, not yet charged: no-op
+    [InlineData(.449, 25, true, GripRelease.None)]
     [InlineData(.45, 25, true, GripRelease.NormalSpell)]
-    [InlineData(1.5, 24, true, GripRelease.SmallProjectile)]
-    [InlineData(.45, 0, true, GripRelease.SmallProjectile)]
-    [InlineData(.45, 25, false, GripRelease.SmallProjectile)]
+    [InlineData(10, 25, true, GripRelease.NormalSpell)]      // stored indefinitely while held
+    [InlineData(1.5, 24, true, GripRelease.None)]            // charged but not enough soul: no fallback shot
+    [InlineData(.45, 0, true, GripRelease.None)]
+    [InlineData(.45, 25, false, GripRelease.None)]
+    [InlineData(.1, 0, false, GripRelease.SmallProjectile)]
     public void ReleaseRequiresThresholdSoulAndUnlock(double held, int soul, bool unlocked, GripRelease expected)
     {
         var attack = new GripAttack(); attack.Press(2);
@@ -153,4 +157,40 @@ public class MageGripTests
     [InlineData(99, "Fireball 2")]
     public void ChargedFireballsUseUnlockedTier(int level, string? state) =>
         Assert.Equal(state, GripProjectiles.ChargedFireballState(level));
+
+    [Fact]
+    public void TapWindowAndChargeConstantsAreFixed()
+    {
+        Assert.Equal(0.2, GripAttack.TapSeconds);
+        Assert.Equal(0.45, GripAttack.ChargeSeconds);
+    }
+
+    [Theory]
+    [InlineData(0.199, 0, false)]
+    [InlineData(0.2, 0, true)]   // winding after tap window
+    [InlineData(0.449, 0, true)]
+    [InlineData(0.45, 1, true)]  // first stored; Shaman Master winds toward the second flash
+    [InlineData(1.499, 1, true)]
+    [InlineData(1.5, 2, false)]  // shaman second stored
+    [InlineData(8, 2, false)]    // still stored
+    public void StoredTierAndWindingFollowHoldTime(double held, int tier, bool winding)
+    {
+        var attack = new GripAttack();
+        attack.Press(1);
+        Assert.Equal(tier, attack.StoredTier(1 + held, shamanMaster: true));
+        Assert.Equal(winding, attack.Winding(1 + held, shamanMaster: true));
+    }
+
+    [Fact]
+    public void WindingForSecondChargeAfterFirstIsStored()
+    {
+        var attack = new GripAttack();
+        attack.Press(0);
+        Assert.True(attack.Winding(0.3, shamanMaster: true));
+        Assert.True(attack.Winding(0.3, shamanMaster: false)); // first-charge winding is independent of Shaman Master
+        // After first charge, only Shaman Master keeps winding toward the second flash.
+        Assert.False(attack.Winding(0.8, shamanMaster: false));
+        Assert.True(attack.Winding(0.8, shamanMaster: true));
+        Assert.False(attack.Winding(1.5, shamanMaster: true));
+    }
 }

@@ -12,7 +12,8 @@ namespace Spellcaster.Mod;
 
 /// <summary>
 /// Owns only the Quick Cast button when Mage's Grip is equipped and Vengeful Spirit is unlocked.
-/// Nail/attack (including nail arts) and regular Cast (focus/heal, 33-soul tap) stay vanilla.
+/// Charge is stored while the button is held (walk, jump, dash, turn, wall-slide), using vanilla
+/// nail-art glow / flash / audio. Nail/attack and regular Cast stay vanilla.
 /// </summary>
 internal sealed class MageGripRuntime
 {
@@ -20,6 +21,7 @@ internal sealed class MageGripRuntime
     private readonly GripAttack attack = new GripAttack();
     private readonly GripRecoil recoil = new GripRecoil();
     private HeroController? hero;
+    private HeroController? damageSub;
     private float? pendingAngle;
     private bool pendingPogo;
     private PlayMakerFSM? prepaidFsm;
@@ -27,6 +29,11 @@ internal sealed class MageGripRuntime
     private int suppressDebit;
     private CastKind prepaidKind;
     private bool prepaidShamanStone;
+    private int visTier;
+    private bool visWinding;
+    private GripRelease pendingRelease;
+    private bool hasPending;
+    private float pendingUntil;
     private static readonly Dictionary<string, FieldInfo> Fields = new Dictionary<string, FieldInfo>();
     private static readonly MethodInfo SetStateMethod = typeof(HeroController).GetMethod("SetState", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
@@ -63,20 +70,34 @@ internal sealed class MageGripRuntime
         return field;
     }
     private static void Set(HeroController self, string name, object value) => Field(name).SetValue(self, value);
+    private static T? Get<T>(HeroController self, string name) where T : class => Field(name).GetValue(self) as T;
 
     internal void Reset()
     {
         if (prepaidFsm != null && prepaidState != null && prepaidFsm.gameObject.activeInHierarchy)
             prepaidFsm.SetState("Cancel All");
+        if (hero != null) HideVisuals(hero);
         attack.Reset(); recoil.Reset();
         pendingAngle = null; pendingPogo = false;
         prepaidFsm = null; prepaidState = null; suppressDebit = 0;
+        visTier = 0; visWinding = false; hasPending = false;
+        UnsubscribeDamage();
         hero = null;
     }
 
     /// <summary>Vengeful Spirit unlocked. The runtime is only constructed while Mage's Grip is equipped.</summary>
     private static bool Active => PlayerData.instance != null && PlayerData.instance.GetInt("fireballLevel") > 0;
 
+    /// <summary>
+    /// Conditions that drop a stored charge. Intentionally allows dash, wall-slide, jump,
+    /// attack-recoil and walking — the charge is kept as long as Quick Cast stays held.
+    /// Damage is handled separately via <see cref="OnHurt"/>, mirroring vanilla nail arts.
+    /// </summary>
+    private bool MustDropCharge(HeroController self) => !runtime.CanPlay || self.cState.transitioning ||
+        self.cState.dead || self.cState.hazardDeath || self.cState.hazardRespawning ||
+        self.hero_state == ActorStates.no_input;
+
+    // Small-shot pogo / recoil only. Not used to drop a stored Quick Cast charge.
     private bool Ready(HeroController self) => runtime.CanPlay && !self.cState.transitioning &&
         !self.cState.dead && !self.cState.hazardDeath && !self.cState.hazardRespawning &&
         !self.cState.recoiling && !self.cState.recoilFrozen && !self.cState.dashing &&
@@ -85,7 +106,6 @@ internal sealed class MageGripRuntime
     private static float Interval(HeroController self) => PlayerData.instance.GetBool("equippedCharm_32")
         ? self.ATTACK_COOLDOWN_TIME_CH : self.ATTACK_COOLDOWN_TIME;
 
-    /// <summary>Swallow vanilla Quick Cast spells so this runtime owns the button exclusively.</summary>
     private void OnListenQuickCast(On.HutongGames.PlayMaker.Actions.ListenForQuickCast.orig_OnUpdate orig,
         ListenForQuickCast self)
     {
@@ -96,28 +116,95 @@ internal sealed class MageGripRuntime
     private HeroActions Actions(HeroController self) =>
         ((InputHandler)Field("inputHandler").GetValue(self)!).inputActions;
 
+    private void SubscribeDamage(HeroController self)
+    {
+        if (damageSub == self) return;
+        UnsubscribeDamage();
+        damageSub = self;
+        if (self != null) self.OnTakenDamage += OnHurt;
+    }
+
+    private void UnsubscribeDamage()
+    {
+        if (damageSub != null) damageSub.OnTakenDamage -= OnHurt;
+        damageSub = null;
+    }
+
+    private void OnHurt()
+    {
+        if (hero != null) HideVisuals(hero);
+        attack.CancelHold();
+        hasPending = false;
+        visTier = 0;
+        visWinding = false;
+    }
+
     private void OnUpdate(On.HeroController.orig_Update orig, HeroController self)
     {
         orig(self);
         hero = self;
-        if (!Active || !Ready(self))
+        SubscribeDamage(self);
+        if (!Active)
         {
-            attack.CancelHold(); pendingAngle = null; pendingPogo = false;
+            if (attack.Holding || visTier > 0 || visWinding) { HideVisuals(self); attack.CancelHold(); }
+            hasPending = false;
+            return;
+        }
+        if (MustDropCharge(self))
+        {
+            if (attack.Holding || visTier > 0 || visWinding) { HideVisuals(self); attack.CancelHold(); }
+            hasPending = false;
             return;
         }
         var input = Actions(self);
-        if (input.quickCast.WasPressed) attack.Press(Time.timeAsDouble);
-        if (!attack.Holding || input.quickCast.IsPressed) return;
-        float angle = Direction(self);
-        string levelName = angle == 90 ? "screamLevel" : angle == 270 ? "quakeLevel" : "fireballLevel";
-        var release = attack.Release(Time.timeAsDouble, PlayerData.instance.GetInt("MPCharge"),
-            PlayerData.instance.GetInt(levelName) > 0, runtime.ShamanMasterEnabled,
-            PlayerData.instance.GetBool("equippedCharm_19"), runtime.FastCastingEnabled,
-            PlayerData.instance.GetBool("equippedCharm_33"));
-        if ((release == GripRelease.NormalSpell || release == GripRelease.ChargedSpell) && TrySpell(self, angle, levelName, release))
+        double now = Time.timeAsDouble;
+        if (input.quickCast.WasPressed) attack.Press(now);
+        if (attack.Holding && input.quickCast.IsPressed)
+        {
+            SyncVisuals(self, now);
+            return;
+        }
+        if (attack.Holding)
+        {
+            HideVisuals(self);
+            float angle = Direction(self);
+            string levelName = angle == 90 ? "screamLevel" : angle == 270 ? "quakeLevel" : "fireballLevel";
+            var release = attack.Release(now, PlayerData.instance.GetInt("MPCharge"),
+                PlayerData.instance.GetInt(levelName) > 0, runtime.ShamanMasterEnabled,
+                PlayerData.instance.GetBool("equippedCharm_19"), runtime.FastCastingEnabled,
+                PlayerData.instance.GetBool("equippedCharm_33"));
+            if (!TryFire(self, angle, levelName, release))
+            {
+                pendingRelease = release;
+                hasPending = release != GripRelease.None;
+                pendingUntil = Time.time + 1f;
+            }
+            return;
+        }
+        if (hasPending)
+        {
+            if (Time.time > pendingUntil) { hasPending = false; return; }
+            float angle = Direction(self);
+            string levelName = angle == 90 ? "screamLevel" : angle == 270 ? "quakeLevel" : "fireballLevel";
+            if (TryFire(self, angle, levelName, pendingRelease)) hasPending = false;
+        }
+    }
+
+    private bool TryFire(HeroController self, float angle, string levelName, GripRelease release)
+    {
+        if (release == GripRelease.None) return true;
+        if ((release == GripRelease.NormalSpell || release == GripRelease.ChargedSpell) &&
+            TrySpell(self, angle, levelName, release))
+        {
             attack.Commit(Time.timeAsDouble, Interval(self));
-        else if (release != GripRelease.None)
+            return true;
+        }
+        if (release == GripRelease.SmallProjectile)
+        {
             FireSmall(self, angle);
+            return true;
+        }
+        return false;
     }
 
     private static float Direction(HeroController self)
@@ -140,7 +227,9 @@ internal sealed class MageGripRuntime
     private bool TrySpell(HeroController self, float angle, string levelName, GripRelease release)
     {
         var fsm = PlayMakerFSM.FindFsmOnGameObject(self.gameObject, "Spell Control");
-        if (fsm == null || fsm.ActiveStateName != "Inactive" || !self.CanCast()) return false;
+        // Looser than CanCast: a stored charge can be released mid-dash / mid-nail.
+        if (fsm == null || fsm.ActiveStateName != "Inactive") return false;
+        if (self.cState.dead || self.cState.transitioning || self.hero_state == ActorStates.no_input) return false;
         int level = PlayerData.instance.GetInt(levelName);
         string state = angle == 270 ? "Quake Antic" : angle == 90 ? (level > 1 ? "Scream Antic2" : "Scream Antic1") : "Fireball Antic";
         string debit = angle == 270 ? "Level Check 2" : angle == 90 ? (level > 1 ? "Scream Burst 2" : "Scream Burst 1") : (level > 1 ? "Fireball 2" : "Fireball 1");
@@ -157,6 +246,75 @@ internal sealed class MageGripRuntime
         pendingAngle = null; pendingPogo = false;
         fsm.SetState(state);
         return true;
+    }
+
+    private void SyncVisuals(HeroController self, double now)
+    {
+        bool shaman = runtime.ShamanMasterEnabled;
+        bool stone = PlayerData.instance.GetBool("equippedCharm_19");
+        bool fast = runtime.FastCastingEnabled;
+        int tier = attack.StoredTier(now, shaman, stone, fast);
+        bool winding = attack.Winding(now, shaman, stone, fast);
+        var glow = Get<GameObject>(self, "artChargeEffect");
+        var charged = Get<GameObject>(self, "artChargedEffect");
+        var flash = Get<GameObject>(self, "artChargedFlash");
+        var audio = Get<HeroAudioController>(self, "audioCtrl");
+        if (winding && !visWinding)
+        {
+            if (glow != null && !glow.activeSelf) glow.SetActive(true);
+            audio?.PlaySound(HeroSounds.NAIL_ART_CHARGE);
+        }
+        if (!winding && visWinding)
+        {
+            if (glow != null) glow.SetActive(false);
+            audio?.StopSound(HeroSounds.NAIL_ART_CHARGE);
+        }
+        if (winding && glow != null && !glow.activeSelf) glow.SetActive(true);
+        visWinding = winding;
+
+        if (tier > visTier)
+        {
+            if (glow != null) glow.SetActive(false);
+            audio?.StopSound(HeroSounds.NAIL_ART_CHARGE);
+            if (charged != null) charged.SetActive(true);
+            if (flash != null) flash.SetActive(true);
+            var anim = Field("artChargedEffectAnim").GetValue(self);
+            anim?.GetType().GetMethod("PlayFromFrame", BindingFlags.Instance | BindingFlags.Public, null, new[] { typeof(int) }, null)
+                ?.Invoke(anim, new object[] { 0 });
+            try { GameCameras.instance?.cameraShakeFSM?.SendEvent("EnemyKillShake"); } catch { }
+            var src = Get<AudioSource>(self, "audioSource");
+            var clip = Field("nailArtChargeComplete").GetValue(self) as AudioClip;
+            if (src != null && clip != null) src.PlayOneShot(clip, 1f);
+            audio?.PlaySound(HeroSounds.NAIL_ART_READY);
+        }
+        if (tier >= 1 && charged != null && !charged.activeSelf) charged.SetActive(true);
+        if (tier == 0 && visTier > 0) HideVisuals(self);
+        visTier = tier;
+    }
+
+    private void HideVisuals(HeroController self)
+    {
+        // Do not tear down a concurrent vanilla nail-art charge.
+        bool nail = self.cState.nailCharging;
+        float timer = 0f;
+        try { timer = (float)Field("nailChargeTimer").GetValue(self)!; } catch { }
+        float need = 0f;
+        try { need = (float)Field("nailChargeTime").GetValue(self)!; } catch { }
+        bool vanillaOwns = nail || timer >= need && timer > 0f;
+        var audio = Get<HeroAudioController>(self, "audioCtrl");
+        if (!vanillaOwns)
+        {
+            var glow = Get<GameObject>(self, "artChargeEffect");
+            var charged = Get<GameObject>(self, "artChargedEffect");
+            var flash = Get<GameObject>(self, "artChargedFlash");
+            if (glow != null) glow.SetActive(false);
+            if (charged != null) charged.SetActive(false);
+            if (flash != null) flash.SetActive(false);
+            audio?.StopSound(HeroSounds.NAIL_ART_CHARGE);
+            audio?.StopSound(HeroSounds.NAIL_ART_READY);
+        }
+        visTier = 0;
+        visWinding = false;
     }
 
     internal (CastKind Kind, bool ShamanStone) SpellKind(FsmState state) =>
