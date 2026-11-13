@@ -22,6 +22,11 @@ public static class SpellCharms
 
     public const int IconVariants = 3;
 
+    // User-picked appearances: Grip C (warm gold), Shaman A (amber), Collector A (soul teal).
+    public const int DefaultGripIcon = 2;
+    public const int DefaultShamanIcon = 0;
+    public const int DefaultCollectorIcon = 0;
+
     public static readonly int[] Ids = { MageGripId, ShamanMasterId, SoulCollectorId };
 
     public static bool IsOurs(int id) => id >= FirstId && id <= LastId;
@@ -54,6 +59,14 @@ public static class SpellCharms
     public static bool IsDescKey(string key, out int id) =>
         TryParse(key, out id) && key.StartsWith("CHARM_DESC_", StringComparison.Ordinal);
 
+    /// <summary>True for ZH and regional ZH_* codes (ZH_CN, ZH_TW, …).</summary>
+    public static bool IsChineseLanguage(string? languageCode)
+    {
+        if (string.IsNullOrEmpty(languageCode)) return false;
+        string u = languageCode!.ToUpperInvariant();
+        return u == "ZH" || u.StartsWith("ZH_", StringComparison.Ordinal);
+    }
+
     public static string EnglishName(int id) => id switch
     {
         MageGripId => "Mage's Grip",
@@ -70,20 +83,41 @@ public static class SpellCharms
         _ => throw new ArgumentOutOfRangeException(nameof(id))
     };
 
-    /// <summary>Bilingual title shown on the charm board: Chinese first, then English.</summary>
-    public static string DisplayName(int id) => ChineseName(id) + " / " + EnglishName(id);
+    /// <summary>Name in a single language: Chinese when <paramref name="chinese"/> is true, otherwise English.</summary>
+    public static string DisplayName(int id, bool chinese) =>
+        chinese ? ChineseName(id) : EnglishName(id);
 
-    public static string DisplayDescription(int id) => id switch
+    public static string ChineseDescription(int id) => id switch
     {
         MageGripId =>
-            "轻点攻击向输入方向发射小复仇之魂（始终为白色，即使已解锁暗影之魂），伤害约为骨钉的一半，不耗魂；回魂为骨钉的一半。按住 0.45 秒松开施放已解锁法术，耗 25 魂。禁用骨钉技艺。\n\n"
-            + "Tap attack to fire a small Vengeful Spirit (always the white form, even with Shade Soul unlocked) in the input direction, dealing about half nail damage at no soul cost; nail soul gain is halved. Hold 0.45s and release to cast the unlocked spell for 25 soul. Nail arts are disabled.",
+            "轻点攻击向输入方向发射小复仇之魂（始终为白色，即使已解锁暗影之魂），伤害约为骨钉的一半，不耗魂；回魂为骨钉的一半。按住 0.45 秒松开施放已解锁法术，耗 25 魂。禁用骨钉技艺。",
         ShamanMasterId =>
-            "需要已装备法师之握。按住攻击到第二段（1.5 秒；装备萨满之石时 1.1 秒）施放更强蓄力法术：伤害 ×2，范围增大，耗 48 魂（装备法术扭曲者时 36）。\n\n"
-            + "Requires Mage's Grip to be equipped. Hold attack to the second threshold (1.5s, or 1.1s with Shaman Stone) for a stronger charged spell: double damage, larger range, 48 soul (36 with Spell Twister).",
+            "需要已装备法师之握。按住攻击到第二段（1.5 秒；装备萨满之石时 1.1 秒）施放更强蓄力法术：伤害 ×2，范围增大，耗 48 魂（装备法术扭曲者时 36）。",
         SoulCollectorId =>
-            "法术命中每段固定回 9 魂，可与捕魂者、噬魂者一同生效。骨钉回魂减半。\n\n"
-            + "Each damaging spell hit restores a flat 9 soul, stacking with Soul Catcher and Soul Eater. Nail soul gain is halved.",
+            "法术命中每段固定回 9 魂，可与捕魂者、噬魂者一同生效。骨钉回魂减半。",
+        _ => throw new ArgumentOutOfRangeException(nameof(id))
+    };
+
+    public static string EnglishDescription(int id) => id switch
+    {
+        MageGripId =>
+            "Tap attack to fire a small Vengeful Spirit (always the white form, even with Shade Soul unlocked) in the input direction, dealing about half nail damage at no soul cost; nail soul gain is halved. Hold 0.45s and release to cast the unlocked spell for 25 soul. Nail arts are disabled.",
+        ShamanMasterId =>
+            "Requires Mage's Grip to be equipped. Hold attack to the second threshold (1.5s, or 1.1s with Shaman Stone) for a stronger charged spell: double damage, larger range, 48 soul (36 with Spell Twister).",
+        SoulCollectorId =>
+            "Each damaging spell hit restores a flat 9 soul, stacking with Soul Catcher and Soul Eater. Nail soul gain is halved.",
+        _ => throw new ArgumentOutOfRangeException(nameof(id))
+    };
+
+    public static string DisplayDescription(int id, bool chinese) =>
+        chinese ? ChineseDescription(id) : EnglishDescription(id);
+
+    /// <summary>User-picked default icon variant for this charm (0=A, 1=B, 2=C).</summary>
+    public static int DefaultIconVariant(int id) => id switch
+    {
+        MageGripId => DefaultGripIcon,
+        ShamanMasterId => DefaultShamanIcon,
+        SoulCollectorId => DefaultCollectorIcon,
         _ => throw new ArgumentOutOfRangeException(nameof(id))
     };
 
