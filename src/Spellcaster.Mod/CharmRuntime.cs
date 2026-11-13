@@ -117,24 +117,6 @@ internal sealed class CharmRuntime
         return SpellCharms.ResolveIsChinese(current, saved);
     }
 
-    internal void Grant(int id, bool asNew)
-    {
-        if (!SpellCharms.IsOurs(id)) return;
-        var flag = Flag(id);
-        if (asNew) flag.New = !flag.Got;
-        bool was = flag.Got;
-        flag.Got = true;
-        if (PlayerData.instance != null)
-            PlayerData.instance.SetBool("hasCharm", true);
-        SyncEffects();
-        if (!was)
-            Modding.Logger.Log("[Spellcaster] granted charm " + id + " (" + SpellCharms.EnglishName(id) + ")");
-    }
-
-    internal bool Has(int id) => SpellCharms.IsOurs(id) && Flag(id).Got;
-
-    internal void GiveAll(bool asNew) => EnsureOwned(asNew);
-
     /// <summary>
     /// Every save (new or existing) owns all three Spellcaster charms, not auto-equipped.
     /// The "new" orb is only set the first time a charm becomes owned.
@@ -153,20 +135,6 @@ internal sealed class CharmRuntime
         if (PlayerData.instance != null)
             PlayerData.instance.SetBool("hasCharm", true);
         SyncEffects();
-    }
-
-    internal void TakeAll()
-    {
-        foreach (int id in SpellCharms.Ids)
-        {
-            Unequip(id);
-            var flag = Flag(id);
-            flag.Got = false;
-            flag.Equipped = false;
-            flag.New = false;
-        }
-        SyncEffects();
-        if (PlayerData.instance != null) PlayerData.instance.CalculateNotchesUsed();
     }
 
     internal void SyncEffects()
@@ -204,18 +172,6 @@ internal sealed class CharmRuntime
         return n;
     }
 
-
-    private void Unequip(int id)
-    {
-        var flag = Flag(id);
-        if (!flag.Equipped) return;
-        flag.Equipped = false;
-        if (PlayerData.instance != null)
-        {
-            var list = PlayerData.instance.GetVariable<List<int>>("equippedCharms");
-            list?.Remove(id);
-        }
-    }
 
     private string OnLanguage(string key, string sheet, string orig)
     {

@@ -17,7 +17,7 @@ public sealed class Settings
     // Kept for old GlobalSettings.json; charms are owned by default on every save.
     // The debug menu no longer grants or removes them.
     public bool GiveSpellcasterCharms;
-    // 0–2, picks one of the recolored vanilla-sprite variants.
+    // Legacy serialized preference; the fixed user-picked defaults now select icons.
     public int CharmIconVariant;
     // null: use the live vanilla INVUL_TIME_QUAKE at each dive.
     public double? QuakeInvulnerabilitySeconds;
@@ -76,6 +76,9 @@ public sealed class SpellcasterMod : Modding.Mod, ITogglableMod, IGlobalSettings
     public void OnLoadLocal(LocalSettings value)
     {
         local = value ?? new LocalSettings();
+        local.MageGrip ??= new CharmSave();
+        local.ShamanMaster ??= new CharmSave();
+        local.SoulCollector ??= new CharmSave();
         runtime?.Charms?.ApplySettings();
     }
     public LocalSettings OnSaveLocal() => local;

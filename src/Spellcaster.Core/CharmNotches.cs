@@ -27,7 +27,8 @@ public static class CharmNotches
     public static int Effective(int earned, int menuTotal)
     {
         int safeEarned = Math.Max(0, earned);
-        int target = ClampTotal(menuTotal) == 0 ? safeEarned : ClampTotal(menuTotal);
+        int requested = ClampTotal(menuTotal);
+        int target = requested == 0 ? safeEarned : requested;
         int value = Math.Max(safeEarned, target);
         return Math.Min(ExpandedCap, value);
     }

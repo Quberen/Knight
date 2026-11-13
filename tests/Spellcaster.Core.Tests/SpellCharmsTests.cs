@@ -181,4 +181,17 @@ public class SpellCharmsTests
     [InlineData(9, 2)]
     public void IconVariantClampsToThreeChoices(int raw, int expected) =>
         Assert.Equal(expected, SpellCharms.ClampVariant(raw));
+
+    [Theory]
+    [InlineData(0f, -2f, .55f)]
+    [InlineData(0f, -1f, .45f)]
+    [InlineData(0f, -.55f, 0f)]
+    [InlineData(0f, -.2f, 0f)]
+    [InlineData(-5f, -7f, .55f)]
+    public void FifthRowLiftPreservesMinimumGap(float fourth, float fifth, float expected)
+    {
+        Assert.Equal(.55f, CharmBoardLayout.FifthLift);
+        Assert.Equal(.55f, CharmBoardLayout.MinGap);
+        Assert.Equal(expected, CharmBoardLayout.Lift(fourth, fifth), 5);
+    }
 }
