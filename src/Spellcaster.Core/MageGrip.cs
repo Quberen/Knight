@@ -16,13 +16,13 @@ public sealed class GripAttack
     public bool CanAttack(double now) => now + 1e-9 >= nextAttack;
     public void Press(double now)
     {
-        HeatMeter.RequireFiniteNonnegative(now, nameof(now));
+        Numbers.RequireFiniteNonnegative(now, nameof(now));
         if (!Holding && CanAttack(now)) pressedAt = now;
     }
 
     public GripRelease Release(double now, int soul, bool spellUnlocked)
     {
-        HeatMeter.RequireFiniteNonnegative(now, nameof(now));
+        Numbers.RequireFiniteNonnegative(now, nameof(now));
         var start = pressedAt;
         pressedAt = null;
         if (!start.HasValue || !CanAttack(now)) return GripRelease.None;
@@ -32,8 +32,8 @@ public sealed class GripAttack
 
     public void Commit(double now, double interval)
     {
-        HeatMeter.RequireFiniteNonnegative(now, nameof(now));
-        HeatMeter.RequireFiniteNonnegative(interval, nameof(interval));
+        Numbers.RequireFiniteNonnegative(now, nameof(now));
+        Numbers.RequireFiniteNonnegative(interval, nameof(interval));
         nextAttack = now + interval;
     }
 
@@ -54,9 +54,9 @@ public sealed class GripRecoil
 
     public double Down(double velocityY, double nailPogo, double gravity, double attackInterval)
     {
-        HeatMeter.RequireFiniteNonnegative(nailPogo, nameof(nailPogo));
-        HeatMeter.RequireFiniteNonnegative(gravity, nameof(gravity));
-        HeatMeter.RequireFiniteNonnegative(attackInterval, nameof(attackInterval));
+        Numbers.RequireFiniteNonnegative(nailPogo, nameof(nailPogo));
+        Numbers.RequireFiniteNonnegative(gravity, nameof(gravity));
+        Numbers.RequireFiniteNonnegative(attackInterval, nameof(attackInterval));
         if (DownShots++ == 0)
         {
             // v*T - g*T*T/2 < 0 even for the first shot at the fastest allowed rate.
