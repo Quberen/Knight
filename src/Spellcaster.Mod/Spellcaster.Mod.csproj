@@ -3,7 +3,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
     <ProjectReference Include="../Spellcaster.Core/Spellcaster.Core.csproj" />
-    <Reference Include="Assembly-CSharp;Assembly-CSharp-firstpass;PlayMaker;MMHOOK_Assembly-CSharp;MMHOOK_PlayMaker;MonoMod.RuntimeDetour;MonoMod.Utils;UnityEngine;UnityEngine.CoreModule;UnityEngine.Physics2DModule;UnityEngine.ParticleSystemModule;UnityEngine.AnimationModule;UnityEngine.AudioModule;UnityEngine.IMGUIModule;UnityEngine.InputLegacyModule;UnityEngine.UI">
+    <Reference Include="Assembly-CSharp;Assembly-CSharp-firstpass;PlayMaker;MMHOOK_Assembly-CSharp;MMHOOK_PlayMaker;MonoMod.RuntimeDetour;MonoMod.Utils;UnityEngine;UnityEngine.CoreModule;UnityEngine.Physics2DModule;UnityEngine.ParticleSystemModule;UnityEngine.AnimationModule;UnityEngine.AudioModule;UnityEngine.IMGUIModule;UnityEngine.InputLegacyModule;UnityEngine.UI;UnityEngine.ImageConversionModule;UnityEngine.ScreenCaptureModule">
       <HintPath>$(GameManaged)/%(Identity).dll</HintPath><Private>false</Private>
     </Reference>
   </ItemGroup>

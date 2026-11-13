@@ -8,24 +8,27 @@ namespace Spellcaster.Mod;
 
 public sealed class Settings
 {
-    public bool SoulCollectorEnabled = true;
-    public bool MageGripEnabled;
-    public int MageGripNotchCost = 1;
-    public bool ShamanMasterEnabled;
-    public int ShamanMasterNotchCost = 3;
+    public int MageGripNotchCost = SpellCharms.DefaultGripCost;
+    public int ShamanMasterNotchCost = SpellCharms.DefaultShamanCost;
+    public int SoulCollectorNotchCost = SpellCharms.DefaultCollectorCost;
     public bool FastCastingEnabled;
     // 0 = use earned vanilla notches; 12–16 = requested total (never below earned, cap 16).
     public int CharmNotchTotal;
+    // Debug grant: puts the three Spellcaster charms in the inventory (not auto-equipped).
+    public bool GiveSpellcasterCharms;
+    // 0–2, picks one of the recolored vanilla-sprite variants.
+    public int CharmIconVariant;
     // null: use the live vanilla INVUL_TIME_QUAKE at each dive.
     public double? QuakeInvulnerabilitySeconds;
 }
 
-public sealed class SpellcasterMod : Modding.Mod, ITogglableMod, IGlobalSettings<Settings>, IMenuMod
+public sealed class SpellcasterMod : Modding.Mod, ITogglableMod, IGlobalSettings<Settings>, ILocalSettings<LocalSettings>, IMenuMod
 {
     private Settings settings = new Settings();
+    private LocalSettings local = new LocalSettings();
     private SpellRuntime? runtime;
     public SpellcasterMod() : base("Spellcaster") { }
-    public override string GetVersion() => "0.4.0";
+    public override string GetVersion() => "0.5.0";
     public bool ToggleButtonInsideMenu => false;
 
     public override void Initialize()
@@ -36,13 +39,17 @@ public sealed class SpellcasterMod : Modding.Mod, ITogglableMod, IGlobalSettings
         UnityEngine.Object.DontDestroyOnLoad(host);
         runtime = host.AddComponent<SpellRuntime>();
         runtime.Install(settings);
-        Log("Stage 4 (Shadow Chain) initialized; collector=" + settings.SoulCollectorEnabled
-            + " grip=" + settings.MageGripEnabled
-            + " shaman=" + settings.ShamanMasterEnabled
-            + " shadowChain=Dashmaster+ShamanStone"
-            + " notches(grip=" + settings.MageGripNotchCost
+        runtime.InstallCharms(() => local, value => local = value ?? new LocalSettings());
+        Log("Stage 5 (real charms) initialized; giveCharms=" + settings.GiveSpellcasterCharms
+            + " iconVariant=" + settings.CharmIconVariant
+            + " costs(grip=" + settings.MageGripNotchCost
             + ", shaman=" + settings.ShamanMasterNotchCost
+            + ", collector=" + settings.SoulCollectorNotchCost
             + ", charmTotal=" + (settings.CharmNotchTotal == 0 ? "vanilla" : settings.CharmNotchTotal.ToString()) + ")"
+            + " equipped(grip=" + local.MageGrip.Equipped
+            + ", shaman=" + local.ShamanMaster.Equipped
+            + ", collector=" + local.SoulCollector.Equipped + ")"
+            + " shadowChain=Dashmaster+ShamanStone"
             + " fastCast=" + settings.FastCastingEnabled
             + " quakeInvuln=" + (settings.QuakeInvulnerabilitySeconds.HasValue
                 ? settings.QuakeInvulnerabilitySeconds.Value.ToString() : "native")
@@ -65,11 +72,20 @@ public sealed class SpellcasterMod : Modding.Mod, ITogglableMod, IGlobalSettings
     }
     public Settings OnSaveGlobal() => settings;
 
+    public void OnLoadLocal(LocalSettings value)
+    {
+        local = value ?? new LocalSettings();
+        runtime?.Charms?.ApplySettings();
+    }
+    public LocalSettings OnSaveLocal() => local;
+
     private static void Clamp(Settings value)
     {
-        value.MageGripNotchCost = Math.Max(1, Math.Min(2, value.MageGripNotchCost));
-        value.ShamanMasterNotchCost = Math.Max(1, Math.Min(5, value.ShamanMasterNotchCost));
+        value.MageGripNotchCost = SpellCharms.ClampCost(SpellCharms.MageGripId, value.MageGripNotchCost);
+        value.ShamanMasterNotchCost = SpellCharms.ClampCost(SpellCharms.ShamanMasterId, value.ShamanMasterNotchCost);
+        value.SoulCollectorNotchCost = SpellCharms.ClampCost(SpellCharms.SoulCollectorId, value.SoulCollectorNotchCost);
         value.CharmNotchTotal = CharmNotches.ClampTotal(value.CharmNotchTotal);
+        value.CharmIconVariant = SpellCharms.ClampVariant(value.CharmIconVariant);
         if (value.QuakeInvulnerabilitySeconds.HasValue &&
             !QuakeInvulnerability.IsValid(value.QuakeInvulnerabilitySeconds.Value))
             value.QuakeInvulnerabilitySeconds = null;
@@ -77,34 +93,41 @@ public sealed class SpellcasterMod : Modding.Mod, ITogglableMod, IGlobalSettings
 
     public List<IMenuMod.MenuEntry> GetMenuData(IMenuMod.MenuEntry? toggleButtonEntry) => new List<IMenuMod.MenuEntry>
     {
-        new IMenuMod.MenuEntry("Soul Collector / 灵魂收集者", new[] { "Off / 关闭", "On / 开启" },
-            "Temporary charm: 9 soul per spell hit (flat, stacks with Catcher/Eater), half nail soul. No notch cost yet.",
-            i => { settings.SoulCollectorEnabled = i == 1; if (runtime != null) runtime.SetCollector(i == 1); },
-            () => settings.SoulCollectorEnabled ? 1 : 0),
-        new IMenuMod.MenuEntry("Mage's Grip / 法师之握", new[] { "Off / 关闭", "On / 开启" },
-            "Temporary charm: release attack for a small soul; hold 0.45s for a 25-soul spell. No real notch cost.",
-            i => { settings.MageGripEnabled = i == 1; runtime?.SetGrip(i == 1); },
-            () => settings.MageGripEnabled ? 1 : 0),
+        new IMenuMod.MenuEntry("Debug: give Spellcaster charms / 调试：给予法术流护符",
+            new[] { "Off / 关闭", "Give / 给予" },
+            "Grants Mage's Grip, Shaman Master and Soul Collector into this save's inventory (not auto-equipped). DESIGN acquisition (Ancestral Mound / Soul Sanctum / Salubra) is not implemented yet. Turning Off removes them after unequipping.",
+            i =>
+            {
+                settings.GiveSpellcasterCharms = i == 1;
+                if (i == 1) runtime?.Charms?.GiveAll(asNew: true);
+                else runtime?.Charms?.TakeAll();
+            },
+            () => settings.GiveSpellcasterCharms ? 1 : 0),
+        new IMenuMod.MenuEntry("Charm icon set / 护符图标",
+            new[] { "Variant A / 方案甲", "Variant B / 方案乙", "Variant C / 方案丙" },
+            "Recolored vanilla sprites (Spell Twister, Shaman Stone, Soul Catcher). See the comparison sheet; pick the set you prefer.",
+            i => { settings.CharmIconVariant = SpellCharms.ClampVariant(i); runtime?.Charms?.ApplySettings(); },
+            () => settings.CharmIconVariant),
         new IMenuMod.MenuEntry("Mage's Grip notches / 法师之握槽位", new[] { "1", "2" },
-            "Planned notch cost, saved in Settings; this menu switch does not occupy inventory notches yet.",
-            i => settings.MageGripNotchCost = i + 1,
+            "Notch cost counted toward overcharm when the charm is equipped. Default 1 (DESIGN: 1 or 2).",
+            i => { settings.MageGripNotchCost = i + 1; runtime?.Charms?.ApplySettings(); },
             () => settings.MageGripNotchCost - 1),
-        new IMenuMod.MenuEntry("Shaman Master / 萨满大师", new[] { "Off / 关闭", "On / 开启" },
-            "Requires Mage's Grip. Hold to the second threshold for a 48-soul (36 with Spell Twister) charged spell: damage x2, larger range.",
-            i => { runtime?.ResetCharge(); settings.ShamanMasterEnabled = i == 1; },
-            () => settings.ShamanMasterEnabled ? 1 : 0),
         new IMenuMod.MenuEntry("Shaman Master notches / 萨满大师槽位", new[] { "1", "2", "3", "4", "5" },
-            "Saved/displayed only; does not occupy real charm notches. Default 3.",
-            i => settings.ShamanMasterNotchCost = i + 1,
+            "Notch cost counted toward overcharm when equipped. Default 3.",
+            i => { settings.ShamanMasterNotchCost = i + 1; runtime?.Charms?.ApplySettings(); },
             () => settings.ShamanMasterNotchCost - 1),
+        new IMenuMod.MenuEntry("Soul Collector notches / 灵魂收集者槽位", new[] { "1", "2", "3" },
+            "Notch cost counted toward overcharm when equipped. Default 2 (DESIGN.md).",
+            i => { settings.SoulCollectorNotchCost = i + 1; runtime?.Charms?.ApplySettings(); },
+            () => settings.SoulCollectorNotchCost - 1),
         new IMenuMod.MenuEntry("Fast Casting timing / 极速施法时间测试", new[] { "Off / 关闭", "On / 开启" },
             "Temporary: second charge time x1.5 ONLY. No damage, interval or other spell changes.",
             i => { runtime?.ResetCharge(); settings.FastCastingEnabled = i == 1; },
             () => settings.FastCastingEnabled ? 1 : 0),
         new IMenuMod.MenuEntry("Charm notches / 符咒槽总数",
             new[] { "Vanilla / 原版", "12", "13", "14", "15", "16" },
-            "Total equipped-charm notches, up to 16. Vanilla uses what you have earned (cap 11). Never below earned. Implemented via GetPlayerIntHook only: PlayerData.charmSlots is never written, so disabling the mod leaves a vanilla save.",
-            i => settings.CharmNotchTotal = i == 0 ? 0 : i + 11,
+            "Total equipped-charm notches, up to 16. Vanilla uses what you have earned (cap 11). Never below earned. GetPlayerIntHook only: PlayerData.charmSlots is never written. Extra pips are cloned onto the charm board when possible.",
+            i => { settings.CharmNotchTotal = i == 0 ? 0 : i + 11; runtime?.ApplySettings(settings); },
             () => settings.CharmNotchTotal == 0 ? 0 : settings.CharmNotchTotal - 11),
         new IMenuMod.MenuEntry("Quake invulnerability / 下砸无敌秒数",
             new[] { "Native runtime / 原版运行时", "0", "0.2", "0.4", "0.6", "0.8", "1.0", CustomLabel() },
