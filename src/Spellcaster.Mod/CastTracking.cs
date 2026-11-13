@@ -1,14 +1,21 @@
 using System.Collections.Generic;
 using UnityEngine;
+using Spellcaster.Core;
 
 namespace Spellcaster.Mod;
 
 internal sealed class CastRecord
 {
     public readonly long Id;
+    public readonly CastKind Kind;
+    public float Angle;
+    public float Speed;
+    public int Damage;
+    public bool PogoUsed;
+    public readonly HashSet<int> RewardedTargets = new HashSet<int>();
     public readonly int CreatedFrame = Time.frameCount;
     public int NextGroup = 10;
-    public CastRecord(long id) => Id = id;
+    public CastRecord(long id, CastKind kind) { Id = id; Kind = kind; }
 }
 
 /// <summary>
