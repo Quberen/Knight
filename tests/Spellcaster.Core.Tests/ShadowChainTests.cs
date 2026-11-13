@@ -46,17 +46,22 @@ public class ShadowChainTests
         Assert.Equal(ShadowDashKind.Normal, chain.Decide(now + .000001, false, 99, true).Kind);
     }
 
-    [Fact]
-    public void CostsAreElevenTwentyTwoThirtyThreeAndRemainCapped()
+    [Theory]
+    [InlineData(true)] [InlineData(false)]
+    public void CostsAreElevenTwentyTwoThirtyThreeAndRemainCapped(bool grounded)
     {
         var chain = new ShadowChain();
-        Dash(chain, 0, ready: true);
-        int[] expected = { 11, 22, 33, 33, 33 };
+        Dash(chain, 0, ready: true, grounded: grounded);
+        chain.ExtendWindow(.25);
+        int[] expected = { 11, 22, 33, 33, 33, 33, 33, 33 };
         for (int i = 0; i < expected.Length; i++)
         {
-            var next = Dash(chain, (i + 1) * .25);
+            var next = Dash(chain, (i + 1) * .5, grounded: grounded);
             Assert.Equal(ShadowDashKind.PaidShadow, next.Kind);
             Assert.Equal(expected[i], next.SoulCost);
+            Assert.True(next.WaiveDashCooldown);
+            Assert.True(next.WaiveShadowCooldown);
+            chain.ExtendWindow((i + 1) * .5 + .25);
         }
     }
 
@@ -81,7 +86,9 @@ public class ShadowChainTests
     {
         var chain = new ShadowChain();
         Dash(chain, 0, ready: true);
-        Dash(chain, .2, soul: 10);
+        var fallback = Dash(chain, .2, soul: 10);
+        Assert.True(fallback.WaiveDashCooldown);
+        Assert.False(fallback.WaiveShadowCooldown);
         Assert.Equal(11, chain.Decide(.3, false, 99, true).SoulCost);
         Assert.False(chain.InWindow(.300001));
         Assert.Equal(ShadowDashKind.Normal, Dash(chain, .4).Kind);
@@ -89,7 +96,7 @@ public class ShadowChainTests
 
     [Theory]
     [InlineData(0)] [InlineData(11)]
-    public void ExtraAirDashIsConsumedEvenWhenSoulIsInsufficient(int soul)
+    public void AirChainDoesNotLimitLaterAttemptsEvenWhenSoulIsInsufficient(int soul)
     {
         var chain = new ShadowChain();
         Dash(chain, 0, ready: true, grounded: false);
@@ -98,8 +105,8 @@ public class ShadowChainTests
         Assert.Equal(soul == 11, extra.IsShadow);
         Assert.Equal(soul, extra.SoulCost);
         Assert.Equal(1, chain.AirChains);
-        Assert.False(chain.CanExtraAirDash(.25));
-        Assert.Equal(ShadowDashKind.Normal, chain.Decide(.25, false, 99, false).Kind);
+        Assert.True(chain.CanExtraAirDash(.25));
+        Assert.Equal(ShadowDashKind.PaidShadow, chain.Decide(.25, false, 99, false).Kind);
     }
 
     [Fact]
@@ -116,15 +123,17 @@ public class ShadowChainTests
     }
 
     [Fact]
-    public void LandingClosesWindowClearsAirUseAndPrice()
+    public void LandingKeepsWindowAndPriceThroughDashEnd()
     {
         var chain = new ShadowChain();
         chain.Observe(0, false, 1, false);
         Dash(chain, 0, ready: true, grounded: false);
         Dash(chain, .2, grounded: false);
         chain.Observe(.21, true, 1, false);
-        Assert.False(chain.InWindow(.21));
-        Assert.Equal(0, chain.AirChains);
+        Assert.True(chain.InWindow(.21));
+        Assert.Equal(1, chain.AirChains);
+        chain.ExtendWindow(.45);
+        Assert.Equal(22, chain.Decide(.75, false, 99, true).SoulCost);
         Dash(chain, 2, ready: true);
         Assert.Equal(11, Dash(chain, 2.2).SoulCost);
         // Staying on the ground is not another landing.

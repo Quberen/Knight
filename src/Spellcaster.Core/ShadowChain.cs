@@ -9,6 +9,8 @@ public readonly struct ShadowDashDecision
     public ShadowDashKind Kind { get; }
     public int SoulCost { get; }
     public bool IsChain => Kind == ShadowDashKind.PaidShadow || Kind == ShadowDashKind.UnaffordableChain;
+    public bool WaiveDashCooldown => IsChain;
+    public bool WaiveShadowCooldown => Kind == ShadowDashKind.PaidShadow;
     public bool IsShadow => Kind == ShadowDashKind.FreeShadow || Kind == ShadowDashKind.PaidShadow;
     internal ShadowDashDecision(ShadowDashKind kind, int soulCost = 0) { Kind = kind; SoulCost = soulCost; }
 }
@@ -19,11 +21,9 @@ public sealed class ShadowChain
     public const double WindowSeconds = 0.3;
     public const double IdleResetSeconds = 1.0;
     public const double StationarySpeed = 0.01;
-    public const int MaxAirChains = 1;
     private const double TimeTolerance = 1e-9;
     private double? lastShadowAt;
     private double? idleSince;
-    private bool? wasGrounded;
     private int costIndex;
     public int AirChains { get; private set; }
 
@@ -51,13 +51,13 @@ public sealed class ShadowChain
             now - lastShadowAt.Value <= WindowSeconds + TimeTolerance;
     }
 
-    public bool CanExtraAirDash(double now) => InWindow(now) && AirChains < MaxAirChains;
+    public bool CanExtraAirDash(double now) => InWindow(now);
 
     public ShadowDashDecision Decide(double now, bool nativeShadowReady, int soul, bool grounded)
     {
         Numbers.RequireFiniteNonnegative(now, nameof(now));
         if (nativeShadowReady) return new ShadowDashDecision(ShadowDashKind.FreeShadow);
-        if (!InWindow(now) || (!grounded && AirChains >= MaxAirChains))
+        if (!InWindow(now))
             return new ShadowDashDecision(ShadowDashKind.Normal);
         int cost = Cost(costIndex);
         return soul >= cost ? new ShadowDashDecision(ShadowDashKind.PaidShadow, cost)
@@ -75,7 +75,7 @@ public sealed class ShadowChain
         }
         else if (decision.IsChain)
         {
-            if (!grounded) AirChains = Math.Min(MaxAirChains, AirChains + 1);
+            if (!grounded) AirChains++;
             if (actualShadow)
             {
                 costIndex = Math.Min(2, costIndex + 1);
@@ -87,8 +87,6 @@ public sealed class ShadowChain
     public void Observe(double now, bool grounded, double horizontalVelocity, bool dashing)
     {
         Numbers.RequireFiniteNonnegative(now, nameof(now));
-        if (grounded && wasGrounded == false) ResetSequence();
-        wasGrounded = grounded;
         if (dashing || Math.Abs(horizontalVelocity) > StationarySpeed)
         { idleSince = null; return; }
         if (!idleSince.HasValue) idleSince = now;
@@ -103,7 +101,7 @@ public sealed class ShadowChain
         AirChains = 0;
     }
 
-    public void Reset() { ResetSequence(); wasGrounded = null; }
+    public void Reset() { ResetSequence(); }
 
     /// <summary>
     /// Restart the 0.3s chain window from this instant (call when a shadow dash ends).

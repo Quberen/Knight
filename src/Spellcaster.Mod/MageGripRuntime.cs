@@ -23,6 +23,8 @@ internal sealed class MageGripRuntime
     private HeroController? hero;
     private HeroController? damageSub;
     private float? pendingAngle;
+    private string? smallShotClip;
+    private double smallShotAnimationUntil;
     private bool pendingPogo;
     private PlayMakerFSM? prepaidFsm;
     private string? prepaidState;
@@ -40,6 +42,7 @@ internal sealed class MageGripRuntime
     internal void Install()
     {
         On.HeroController.Update += OnUpdate;
+        On.HeroAnimationController.Update += OnAnimationUpdate;
         On.HeroController.FixedUpdate += OnFixedUpdate;
         On.HeroController.CancelBounce += OnCancelBounce;
         On.HeroController.TakeMP += OnTakeMP;
@@ -50,6 +53,7 @@ internal sealed class MageGripRuntime
     {
         Reset();
         On.HeroController.Update -= OnUpdate;
+        On.HeroAnimationController.Update -= OnAnimationUpdate;
         On.HeroController.FixedUpdate -= OnFixedUpdate;
         On.HeroController.CancelBounce -= OnCancelBounce;
         On.HeroController.TakeMP -= OnTakeMP;
@@ -75,6 +79,7 @@ internal sealed class MageGripRuntime
         if (prepaidFsm != null && prepaidState != null && prepaidFsm.gameObject.activeInHierarchy)
             prepaidFsm.SetState("Cancel All");
         if (hero != null) HideVisuals(hero);
+        smallShotClip = null;
         attack.Reset(); recoil.Reset();
         pendingAngle = null; pendingPogo = false;
         prepaidFsm = null; prepaidState = null; suppressDebit = 0;
@@ -101,7 +106,10 @@ internal sealed class MageGripRuntime
         !self.cState.recoiling && !self.cState.recoilFrozen && !self.cState.dashing &&
         !self.cState.backDashing && self.hero_state != ActorStates.no_input;
 
-    private static float Interval(HeroController self) => PlayerData.instance.GetBool("equippedCharm_32")
+    private static float Interval(HeroController self) =>
+        (float)GripAttack.SmallShotInterval(self.ATTACK_COOLDOWN_TIME_CH);
+
+    private static float HeldSpellInterval(HeroController self) => PlayerData.instance.GetBool("equippedCharm_32")
         ? self.ATTACK_COOLDOWN_TIME_CH : self.ATTACK_COOLDOWN_TIME;
 
     private void OnListenQuickCast(On.HutongGames.PlayMaker.Actions.ListenForQuickCast.orig_OnUpdate orig,
@@ -131,6 +139,7 @@ internal sealed class MageGripRuntime
     private void OnHurt()
     {
         if (hero != null) HideVisuals(hero);
+        smallShotClip = null;
         attack.CancelHold();
         pending.Clear();
         visTier = 0;
@@ -194,7 +203,7 @@ internal sealed class MageGripRuntime
         if ((release == GripRelease.NormalSpell || release == GripRelease.ChargedSpell) &&
             TrySpell(self, angle, levelName, release))
         {
-            attack.Commit(Time.timeAsDouble, Interval(self));
+            attack.Commit(Time.timeAsDouble, HeldSpellInterval(self));
             return true;
         }
         if (release == GripRelease.SmallProjectile)
@@ -220,6 +229,28 @@ internal sealed class MageGripRuntime
         if (!runtime.SpawnSmall(self, angle)) return;
         attack.Commit(Time.timeAsDouble, Interval(self));
         pendingAngle = angle;
+        if (angle == 0) self.FaceRight();
+        if (angle == 180) self.FaceLeft();
+        var animator = self.GetComponent<tk2dSpriteAnimator>();
+        string name = angle == 90 ? "UpSlash" : angle == 270 ? "DownSlash" : "Slash";
+        var clip = animator != null ? animator.GetClipByName(name) : null;
+        if (animator == null || clip == null || clip.fps <= 0) return;
+        // Sprite playback only: never Attack/StartSlash, beams, slash FSMs or attacking state.
+        smallShotClip = name;
+        smallShotAnimationUntil = Time.timeAsDouble + clip.frames.Length / (double)clip.fps;
+        animator.PlayFromFrame(name, 0);
+    }
+
+    private void OnAnimationUpdate(On.HeroAnimationController.orig_Update orig, HeroAnimationController self)
+    {
+        if (hero == null || self.gameObject != hero.gameObject) { orig(self); return; }
+        // Keep locomotion animation selection from overwriting the tap clip next frame.
+        // Native attacks, spells, dash, damage and loss of control immediately take priority.
+        if (smallShotClip != null && Active && Ready(hero) && !MustDropCharge(hero) &&
+            !hero.cState.attacking && !hero.cState.casting && self.controlEnabled &&
+            Time.timeAsDouble < smallShotAnimationUntil && self.animator.IsPlaying(smallShotClip)) return;
+        smallShotClip = null;
+        orig(self);
     }
 
     private bool TrySpell(HeroController self, float angle, string levelName, GripRelease release)

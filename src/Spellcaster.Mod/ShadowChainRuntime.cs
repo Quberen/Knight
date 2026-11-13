@@ -77,7 +77,6 @@ internal sealed class ShadowChainRuntime
         bool active = Observe(self);
         if (orig(self)) return true;
         if (!active || !chain.InWindow(Time.timeAsDouble)) return false;
-        if (!self.cState.onGround && !chain.CanExtraAirDash(Time.timeAsDouble)) return false;
         // Native DASH_COOLDOWN (~0.6s) is longer than the 0.3s chain window, so the window
         // would be unusable unless cooldown is waived for a chain attempt. Other native
         // restrictions (dashing, preventDash, landing, etc.) still apply via orig.
@@ -103,7 +102,7 @@ internal sealed class ShadowChainRuntime
         bool grounded = self.cState.onGround;
         float previous = (float)ShadowTimer.GetValue(self)!;
         var decision = chain.Decide(now, previous <= 0, PlayerData.instance.GetInt("MPCharge"), grounded);
-        bool paid = decision.Kind == ShadowDashKind.PaidShadow;
+        bool paid = decision.WaiveShadowCooldown;
         bool actualShadow = false;
         try
         {
