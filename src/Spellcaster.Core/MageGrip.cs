@@ -2,7 +2,7 @@ using System;
 
 namespace Spellcaster.Core;
 
-public enum GripRelease { None, SmallProjectile, NormalSpell }
+public enum GripRelease { None, SmallProjectile, NormalSpell, ChargedSpell }
 
 /// <summary>Gameplay timestamps, independent of render/physics frame partitioning.</summary>
 public sealed class GripAttack
@@ -20,15 +20,37 @@ public sealed class GripAttack
         if (!Holding && CanAttack(now)) pressedAt = now;
     }
 
-    public GripRelease Release(double now, int soul, bool spellUnlocked)
+    public GripRelease Release(double now, int soul, bool spellUnlocked,
+        bool shamanMaster = false, bool shamanStone = false, bool fastCasting = false, bool spellTwister = false)
     {
         Numbers.RequireFiniteNonnegative(now, nameof(now));
         var start = pressedAt;
         pressedAt = null;
         if (!start.HasValue || !CanAttack(now)) return GripRelease.None;
-        return now - start.Value + 1e-9 >= ChargeSeconds && soul >= SoulCost && spellUnlocked
-            ? GripRelease.NormalSpell : GripRelease.SmallProjectile;
+        double held = now - start.Value + 1e-9;
+        if (!spellUnlocked) return GripRelease.SmallProjectile;
+        if (shamanMaster && held >= SecondChargeSeconds(shamanStone, fastCasting) &&
+            soul >= Cost(GripRelease.ChargedSpell, spellTwister)) return GripRelease.ChargedSpell;
+        return held >= ChargeSeconds && soul >= SoulCost ? GripRelease.NormalSpell : GripRelease.SmallProjectile;
     }
+
+    public static double SecondChargeSeconds(bool shamanStone, bool fastCasting) =>
+        (shamanStone ? 1.1 : 1.5) * (fastCasting ? 1.5 : 1);
+
+    public static int Cost(GripRelease release, bool spellTwister = false) => release switch
+    {
+        GripRelease.ChargedSpell => spellTwister ? 36 : 48,
+        GripRelease.NormalSpell => SoulCost,
+        _ => 0
+    };
+
+    public static CastKind Kind(GripRelease release) => release switch
+    {
+        GripRelease.ChargedSpell => CastKind.ChargedSpell,
+        GripRelease.NormalSpell => CastKind.NormalSpell,
+        GripRelease.SmallProjectile => CastKind.SmallProjectile,
+        _ => throw new ArgumentOutOfRangeException(nameof(release))
+    };
 
     public void Commit(double now, double interval)
     {
