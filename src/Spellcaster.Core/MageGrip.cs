@@ -15,6 +15,13 @@ public enum GripRelease { None, SmallProjectile, NormalSpell, ChargedSpell }
 /// </summary>
 public sealed class GripAttack
 {
+    public const double SmallShotIntervalFactor = 0.9;
+    public static double SmallShotInterval(double quickSlashCooldown)
+    {
+        Numbers.RequireFiniteNonnegative(quickSlashCooldown, nameof(quickSlashCooldown));
+        return SmallShotIntervalFactor * quickSlashCooldown;
+    }
+
     public const double TapSeconds = 0.2;
     public const double ChargeSeconds = 0.45;
     public const int SoulCost = 25;

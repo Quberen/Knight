@@ -6,6 +6,20 @@ namespace Spellcaster.Core.Tests;
 public class MageGripTests
 {
     [Theory]
+    [InlineData(0.25)] [InlineData(0.3)] [InlineData(0.41)]
+    public void SmallShotAlwaysUsesNinetyPercentOfQuickSlashCooldown(double qsCooldown)
+    {
+        double interval = GripAttack.SmallShotInterval(qsCooldown);
+        Assert.Equal(0.9 * qsCooldown, interval, 12);
+        var attack = new GripAttack();
+        attack.Commit(1, interval);
+        Assert.False(attack.CanAttack(1 + interval - .00001));
+        Assert.True(attack.CanAttack(1 + interval));
+        double lift = new GripRecoil().Down(-20, 12, 47.4, interval);
+        Assert.True(lift * interval - .5 * 47.4 * interval * interval < 0);
+    }
+
+    [Theory]
     [InlineData(16, 60, .41)] [InlineData(20, 60, .25)] [InlineData(12, 40, .1)]
     public void FirstDownShotIsPositiveAndBelowRuntimePogo(double pogo, double gravity, double interval)
     {
@@ -120,7 +134,7 @@ public class MageGripTests
 
     [Theory]
     [InlineData(.41)] [InlineData(.25)]
-    public void CooldownHonoursPassedNailInterval(double interval)
+    public void CooldownHonoursPassedInterval(double interval)
     {
         var attack = new GripAttack(); attack.Commit(1, interval);
         Assert.False(attack.CanAttack(1 + interval - .00001));
