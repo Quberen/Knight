@@ -14,7 +14,8 @@ public sealed class Settings
     public bool FastCastingEnabled;
     // 0 = use earned vanilla notches; 12–16 = requested total (never below earned, cap 16).
     public int CharmNotchTotal;
-    // Debug grant: puts the three Spellcaster charms in the inventory (not auto-equipped).
+    // Kept for old GlobalSettings.json; charms are owned by default on every save.
+    // The debug menu no longer grants or removes them.
     public bool GiveSpellcasterCharms;
     // 0–2, picks one of the recolored vanilla-sprite variants.
     public int CharmIconVariant;
@@ -28,7 +29,7 @@ public sealed class SpellcasterMod : Modding.Mod, ITogglableMod, IGlobalSettings
     private LocalSettings local = new LocalSettings();
     private SpellRuntime? runtime;
     public SpellcasterMod() : base("Spellcaster") { }
-    public override string GetVersion() => "0.5.0";
+    public override string GetVersion() => "0.5.1";
     public bool ToggleButtonInsideMenu => false;
 
     public override void Initialize()
@@ -40,8 +41,8 @@ public sealed class SpellcasterMod : Modding.Mod, ITogglableMod, IGlobalSettings
         runtime = host.AddComponent<SpellRuntime>();
         runtime.Install(settings);
         runtime.InstallCharms(() => local, value => local = value ?? new LocalSettings());
-        Log("Stage 5 (real charms) initialized; giveCharms=" + settings.GiveSpellcasterCharms
-            + " iconVariant=" + settings.CharmIconVariant
+        Log("Stage 5 (real charms) initialized; charms owned by default on every save;"
+            + " icons(grip=C, shaman=A, collector=A)"
             + " costs(grip=" + settings.MageGripNotchCost
             + ", shaman=" + settings.ShamanMasterNotchCost
             + ", collector=" + settings.SoulCollectorNotchCost
@@ -95,19 +96,9 @@ public sealed class SpellcasterMod : Modding.Mod, ITogglableMod, IGlobalSettings
     {
         new IMenuMod.MenuEntry("Debug: give Spellcaster charms / 调试：给予法术流护符",
             new[] { "Off / 关闭", "Give / 给予" },
-            "Grants Mage's Grip, Shaman Master and Soul Collector into this save's inventory (not auto-equipped). DESIGN acquisition (Ancestral Mound / Soul Sanctum / Salubra) is not implemented yet. Turning Off removes them after unequipping.",
-            i =>
-            {
-                settings.GiveSpellcasterCharms = i == 1;
-                if (i == 1) runtime?.Charms?.GiveAll(asNew: true);
-                else runtime?.Charms?.TakeAll();
-            },
+            "The three Spellcaster charms are already owned on every save (not auto-equipped). This leftover debug switch is harmless: it does not grant or remove them.",
+            i => { settings.GiveSpellcasterCharms = i == 1; },
             () => settings.GiveSpellcasterCharms ? 1 : 0),
-        new IMenuMod.MenuEntry("Charm icon set / 护符图标",
-            new[] { "Variant A / 方案甲", "Variant B / 方案乙", "Variant C / 方案丙" },
-            "Recolored vanilla sprites (Spell Twister, Shaman Stone, Soul Catcher). See the comparison sheet; pick the set you prefer.",
-            i => { settings.CharmIconVariant = SpellCharms.ClampVariant(i); runtime?.Charms?.ApplySettings(); },
-            () => settings.CharmIconVariant),
         new IMenuMod.MenuEntry("Mage's Grip notches / 法师之握槽位", new[] { "1", "2" },
             "Notch cost counted toward overcharm when the charm is equipped. Default 1 (DESIGN: 1 or 2).",
             i => { settings.MageGripNotchCost = i + 1; runtime?.Charms?.ApplySettings(); },

@@ -6,4 +6,8 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="all" />
     <ProjectReference Include="../../src/Spellcaster.Core/Spellcaster.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="Data/vanilla-zh-glyphs.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
+

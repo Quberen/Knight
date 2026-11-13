@@ -30,21 +30,21 @@ internal sealed class CharmBoard
         boardReady = trayReady = notchesReady = false;
     }
 
-    internal void Ensure(int iconVariant)
+    internal void Ensure()
     {
         CharmIcons.Ensure();
-        ApplySprites(iconVariant);
+        ApplySprites();
         InitBoard();
         InitTray();
     }
 
-    internal void RefreshIcons(int iconVariant)
+    internal void RefreshIcons()
     {
         CharmIcons.Ensure();
-        ApplySprites(iconVariant);
+        ApplySprites();
     }
 
-    private static void ApplySprites(int variant)
+    private static void ApplySprites()
     {
         var list = CharmIconList.Instance;
         if (list == null || list.spriteList == null) return;
@@ -52,7 +52,7 @@ internal sealed class CharmBoard
         while (sprites.Count <= SpellCharms.LastId) sprites.Add(null!);
         foreach (int id in SpellCharms.Ids)
         {
-            var icon = CharmIcons.For(id, variant);
+            var icon = CharmIcons.For(id, SpellCharms.DefaultIconVariant(id));
             if (icon != null) sprites[id] = icon;
         }
         list.spriteList = sprites.ToArray();
@@ -71,15 +71,17 @@ internal sealed class CharmBoard
         var collected = Descendant(charms, "Collected Charms");
         if (fsm == null || backboards == null || collected == null) return;
 
-        const int rows = 5;
-        EditNavigation(fsm, rows);
+        EditNavigation(fsm);
 
+        // Snapshot vanilla row-4 positions BEFORE shifting, then clone a 5th row,
+        // then compress all 5 rows toward the bottom anchor (same as 0.5.0, which
+        // was visually verified). Only 41–43 are visible; 44–50 stay blanked.
+        const int rows = 5;
         float rowScale = 4f / rows;
         float charmScale = Mathf.Sqrt(rowScale);
         const float bbAnchor = -8.37f;
         const float ccAnchor = -8.34f;
 
-        // Snapshot vanilla row-4 positions BEFORE shifting, then clone 41–50, then compress all 5 rows.
         var bbRow4 = new Vector3[10];
         var ccRow4 = new Vector3[10];
         for (int j = 1; j <= 10; j++)
@@ -147,9 +149,8 @@ internal sealed class CharmBoard
                 }
             }
         }
-        // Collected-charm IDs are not arranged in numerical rows, so offsetting
-        // charm 31's position does not land 41 on the 5th-row backboard. Snap them
-        // onto BB 41–43 after the compress pass.
+
+        // Collected-charm IDs are not arranged in numerical rows. Snap 41–43 onto their BBs.
         foreach (int id in SpellCharms.Ids)
         {
             var bb = Child(backboards, "BB " + id);
@@ -157,17 +158,30 @@ internal sealed class CharmBoard
             if (bb == null || cc == null) continue;
             var wp = bb.transform.position;
             cc.transform.position = new Vector3(wp.x, wp.y, cc.transform.position.z);
+            cc.transform.localScale = bb.transform.localScale;
         }
+
         boardReady = true;
-        Modding.Logger.Log("[Spellcaster] charm board: injected ids 41–43 (5th row).");
+        var bb31 = Child(backboards, "BB 31");
+        var bb41 = Child(backboards, "BB 41");
+        Modding.Logger.Log("[Spellcaster] charm board: injected ids 41–43 (5th row, localY 31="
+            + (bb31 != null ? bb31.transform.localPosition.y.ToString("0.00") : "?")
+            + " 41=" + (bb41 != null ? bb41.transform.localPosition.y.ToString("0.00") : "?") + ").");
     }
 
-    private static void EditNavigation(PlayMakerFSM fsm, int rows)
+    private static void EditNavigation(PlayMakerFSM fsm)
     {
+        // Fifth row is only 41–43. Down from 31–40 adds 10 then Update Cursor clamps to 43.
+        // Left wraps at 1/11/21/31/41; Right wraps at 10/20/30/40/43 (not 50).
         try
         {
             var down = Action<IntCompare>(fsm, "Down", 0);
-            if (down != null) down.integer2 = (rows - 1) * 10;
+            if (down != null)
+            {
+                if (down.integer2 != null) { down.integer2.Value = 40; down.integer2.UseVariable = false; }
+                else down.integer2 = 40;
+                Modding.Logger.Log("[Spellcaster] UI Charms Down integer2=" + down.integer2.Value);
+            }
         }
         catch (Exception e) { Modding.Logger.Log("[Spellcaster] UI Charms Down: " + e.Message); }
         try
@@ -175,12 +189,13 @@ internal sealed class CharmBoard
             var left = Action<IntSwitch>(fsm, "Left", 0);
             if (left != null)
             {
-                var compare = new FsmInt[rows];
-                var ev = new FsmEvent[rows];
+                int[] edges = { 1, 11, 21, 31, SpellCharms.FirstId };
+                var compare = new FsmInt[edges.Length];
+                var ev = new FsmEvent[edges.Length];
                 var toLeft = FsmEvent.FindEvent("TO LEFT");
-                for (int i = 0; i < rows; i++)
+                for (int i = 0; i < edges.Length; i++)
                 {
-                    compare[i] = 1 + i * 10;
+                    compare[i] = edges[i];
                     ev[i] = toLeft;
                 }
                 left.compareTo = compare;
@@ -193,12 +208,13 @@ internal sealed class CharmBoard
             var right = Action<IntSwitch>(fsm, "Right", 0);
             if (right != null)
             {
-                var compare = new FsmInt[rows];
-                var ev = new FsmEvent[rows];
+                int[] edges = { 10, 20, 30, 40, SpellCharms.LastId };
+                var compare = new FsmInt[edges.Length];
+                var ev = new FsmEvent[edges.Length];
                 var toRight = FsmEvent.FindEvent("TO RIGHT");
-                for (int i = 0; i < rows; i++)
+                for (int i = 0; i < edges.Length; i++)
                 {
-                    compare[i] = (i + 1) * 10;
+                    compare[i] = edges[i];
                     ev[i] = toRight;
                 }
                 right.compareTo = compare;
@@ -209,7 +225,12 @@ internal sealed class CharmBoard
         try
         {
             var clamp = Action<IntClamp>(fsm, "Update Cursor", 1);
-            if (clamp != null) clamp.maxValue = rows * 10;
+            if (clamp != null)
+            {
+                if (clamp.maxValue != null) { clamp.maxValue.Value = SpellCharms.LastId; clamp.maxValue.UseVariable = false; }
+                else clamp.maxValue = SpellCharms.LastId;
+                Modding.Logger.Log("[Spellcaster] UI Charms clamp max=" + clamp.maxValue.Value);
+            }
         }
         catch (Exception e) { Modding.Logger.Log("[Spellcaster] UI Charms clamp: " + e.Message); }
     }

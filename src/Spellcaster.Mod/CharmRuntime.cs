@@ -65,7 +65,7 @@ internal sealed class CharmRuntime
         ModHooks.SavegameSaveHook += OnAfterSave;
         ModHooks.NewGameHook += OnNewGame;
         board.Install();
-        ApplyGive();
+        EnsureOwned(asNew: true);
         SyncEffects();
     }
 
@@ -93,20 +93,62 @@ internal sealed class CharmRuntime
 
     internal void ApplySettings()
     {
-        ApplyGive();
+        EnsureOwned(asNew: true);
         SyncEffects();
-        board.RefreshIcons(settings().CharmIconVariant);
+        board.RefreshIcons();
         if (PlayerData.instance != null) PlayerData.instance.CalculateNotchesUsed();
     }
 
-    internal void GiveAll(bool asNew)
+    internal static bool GameIsChinese()
+    {
+        try
+        {
+            string s = Language.Language.CurrentLanguage().ToString();
+            if (SpellCharms.IsChineseLanguage(s)) return true;
+        }
+        catch { }
+        try
+        {
+            if (GameManager.instance != null
+                && SpellCharms.IsChineseLanguage(GameManager.instance.GetLanguageAsString()))
+                return true;
+        }
+        catch { }
+        return false;
+    }
+
+    internal void Grant(int id, bool asNew)
+    {
+        if (!SpellCharms.IsOurs(id)) return;
+        var flag = Flag(id);
+        if (asNew) flag.New = !flag.Got;
+        bool was = flag.Got;
+        flag.Got = true;
+        if (PlayerData.instance != null)
+            PlayerData.instance.SetBool("hasCharm", true);
+        SyncEffects();
+        if (!was)
+            Modding.Logger.Log("[Spellcaster] granted charm " + id + " (" + SpellCharms.EnglishName(id) + ")");
+    }
+
+    internal bool Has(int id) => SpellCharms.IsOurs(id) && Flag(id).Got;
+
+    internal void GiveAll(bool asNew) => EnsureOwned(asNew);
+
+    /// <summary>
+    /// Every save (new or existing) owns all three Spellcaster charms, not auto-equipped.
+    /// The "new" orb is only set the first time a charm becomes owned.
+    /// </summary>
+    internal void EnsureOwned(bool asNew)
     {
         foreach (int id in SpellCharms.Ids)
         {
             var flag = Flag(id);
-            // Only flash the "new" orb the first time the charm is granted.
-            if (asNew) flag.New = !flag.Got;
-            flag.Got = true;
+            if (!flag.Got)
+            {
+                if (asNew) flag.New = true;
+                flag.Got = true;
+            }
         }
         if (PlayerData.instance != null)
             PlayerData.instance.SetBool("hasCharm", true);
@@ -162,15 +204,6 @@ internal sealed class CharmRuntime
         return n;
     }
 
-    private void ApplyGive()
-    {
-        if (settings().GiveSpellcasterCharms) GiveAll(asNew: true);
-        else
-        {
-            // Only take charms that were granted by the debug switch when it flips off;
-            // a loaded local save that already has Got stays until the player turns the switch off.
-        }
-    }
 
     private void Unequip(int id)
     {
@@ -186,8 +219,9 @@ internal sealed class CharmRuntime
 
     private string OnLanguage(string key, string sheet, string orig)
     {
-        if (SpellCharms.IsNameKey(key, out int id)) return SpellCharms.DisplayName(id);
-        if (SpellCharms.IsDescKey(key, out id)) return SpellCharms.DisplayDescription(id);
+        bool zh = GameIsChinese();
+        if (SpellCharms.IsNameKey(key, out int id)) return SpellCharms.DisplayName(id, zh);
+        if (SpellCharms.IsDescKey(key, out id)) return SpellCharms.DisplayDescription(id, zh);
         return orig;
     }
 
@@ -253,7 +287,7 @@ internal sealed class CharmRuntime
     {
         try
         {
-            board.Ensure(settings().CharmIconVariant);
+            board.Ensure();
         }
         catch (Exception e) { Modding.Logger.LogError("[Spellcaster] charm board: " + e); }
         orig(self);
@@ -265,18 +299,17 @@ internal sealed class CharmRuntime
 
     private void OnAfterLoad(SaveGameData data)
     {
-        ApplyGive();
+        EnsureOwned(asNew: true);
         RestoreList(data?.playerData ?? PlayerData.instance);
         if (PlayerData.instance != null) PlayerData.instance.CalculateNotchesUsed();
         SyncEffects();
-        board.Ensure(settings().CharmIconVariant);
+        board.Ensure();
     }
 
     private void OnNewGame()
     {
-        // Fresh local flags already default to false; honour the debug grant.
-        if (settings().GiveSpellcasterCharms) GiveAll(asNew: true);
-        else setLocal(new LocalSettings());
+        setLocal(new LocalSettings());
+        EnsureOwned(asNew: true);
         SyncEffects();
     }
 

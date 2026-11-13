@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using Spellcaster.Core;
 using Xunit;
 
@@ -48,21 +51,69 @@ public class SpellCharmsTests
     }
 
     [Fact]
-    public void NamesAndDescriptionsAreBilingualAndNonEmpty()
+    public void DisplayTextIsSingleLanguageAndDoesNotMix()
     {
         foreach (int id in SpellCharms.Ids)
         {
-            Assert.Contains(SpellCharms.ChineseName(id), SpellCharms.DisplayName(id));
-            Assert.Contains(SpellCharms.EnglishName(id), SpellCharms.DisplayName(id));
-            Assert.Contains('/', SpellCharms.DisplayName(id));
-            string desc = SpellCharms.DisplayDescription(id);
-            Assert.Contains("\n\n", desc);
-            Assert.True(desc.Length > 40);
+            string cnName = SpellCharms.DisplayName(id, chinese: true);
+            string enName = SpellCharms.DisplayName(id, chinese: false);
+            Assert.Equal(SpellCharms.ChineseName(id), cnName);
+            Assert.Equal(SpellCharms.EnglishName(id), enName);
+            Assert.DoesNotContain('/', cnName);
+            Assert.DoesNotContain(enName, cnName);
+            Assert.DoesNotContain(cnName, enName);
+
+            string cnDesc = SpellCharms.DisplayDescription(id, chinese: true);
+            string enDesc = SpellCharms.DisplayDescription(id, chinese: false);
+            Assert.Equal(SpellCharms.ChineseDescription(id), cnDesc);
+            Assert.Equal(SpellCharms.EnglishDescription(id), enDesc);
+            Assert.DoesNotContain("\n\n", cnDesc);
+            Assert.DoesNotContain("\n\n", enDesc);
+            Assert.True(cnDesc.Length > 10);
+            Assert.True(enDesc.Length > 20);
+            // No leftover bilingual glue.
+            Assert.DoesNotContain("Tap attack", cnDesc);
+            Assert.DoesNotContain("Requires Mage", cnDesc);
+            Assert.DoesNotContain("轻点", enDesc);
         }
         Assert.Equal("法师之握", SpellCharms.ChineseName(41));
         Assert.Equal("Mage's Grip", SpellCharms.EnglishName(41));
         Assert.Equal("萨满大师", SpellCharms.ChineseName(42));
         Assert.Equal("灵魂收集者", SpellCharms.ChineseName(43));
+    }
+
+    [Theory]
+    [InlineData("ZH", true)]
+    [InlineData("zh", true)]
+    [InlineData("ZH_CN", true)]
+    [InlineData("ZH_TW", true)]
+    [InlineData("EN", false)]
+    [InlineData("FR", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void IsChineseLanguageRecognizesZhCodes(string? code, bool expected) =>
+        Assert.Equal(expected, SpellCharms.IsChineseLanguage(code));
+
+    [Fact]
+    public void EveryChineseGlyphIsInTheVanillaZhCorpus()
+    {
+        string path = Path.Combine(Path.GetDirectoryName(typeof(SpellCharmsTests).Assembly.Location)!,
+            "Data", "vanilla-zh-glyphs.txt");
+        Assert.True(File.Exists(path), "vanilla-zh-glyphs.txt is missing from the test output.");
+        var glyphs = new HashSet<char>(File.ReadAllText(path));
+        var missing = new List<string>();
+        foreach (int id in SpellCharms.Ids)
+        {
+            foreach (string s in new[] { SpellCharms.ChineseName(id), SpellCharms.ChineseDescription(id) })
+            {
+                foreach (char ch in s)
+                {
+                    if (ch < 0x4E00 || ch > 0x9FFF) continue;
+                    if (!glyphs.Contains(ch)) missing.Add($"{id}:{ch} U+{(int)ch:X4}");
+                }
+            }
+        }
+        Assert.True(missing.Count == 0, "Tofu-risk glyphs not in vanilla ZH corpus: " + string.Join(", ", missing.Distinct()));
     }
 
     [Theory]
@@ -87,6 +138,15 @@ public class SpellCharmsTests
         Assert.Equal(1, SpellCharms.DefaultCost(41));
         Assert.Equal(3, SpellCharms.DefaultCost(42));
         Assert.Equal(2, SpellCharms.DefaultCost(43));
+    }
+
+    [Fact]
+    public void DefaultIconsMatchUserPick()
+    {
+        // Mage's Grip = C (warm gold), Shaman Master = A (amber), Soul Collector = A (soul teal).
+        Assert.Equal(2, SpellCharms.DefaultIconVariant(41));
+        Assert.Equal(0, SpellCharms.DefaultIconVariant(42));
+        Assert.Equal(0, SpellCharms.DefaultIconVariant(43));
     }
 
     [Theory]
