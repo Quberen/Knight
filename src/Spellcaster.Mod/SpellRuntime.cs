@@ -23,17 +23,21 @@ public sealed class SpellRuntime : MonoBehaviour
     private CastRecord? spawnContext;
     private bool installed;
     private bool collector;
+    private bool damageHooks;
+    private MageGripRuntime? grip;
+    private readonly SoulAccumulator gripSoul = new SoulAccumulator();
     private double lastTime;
     private HeroController? hero;
     public double Heat => heat.Heat;
     public bool CollectorEnabled => collector;
 
-    public void Install(bool enableCollector)
+    public void Install(bool enableCollector, bool enableGrip)
     {
         if (installed) return;
         installed = true;
         On.HutongGames.PlayMaker.FsmState.OnEnter += OnStateEnter;
         On.SpellFluke.OnEnable += OnFlukeEnable;
+        ModHooks.ObjectPoolSpawnHook += OnPoolSpawn;
         ModHooks.BeforeSceneLoadHook += BeforeSceneLoad;
         ModHooks.AfterSavegameLoadHook += AfterLoad;
         ModHooks.NewGameHook += ResetAll;
@@ -41,33 +45,58 @@ public sealed class SpellRuntime : MonoBehaviour
         UnityEngine.SceneManagement.SceneManager.activeSceneChanged += OnSceneChanged;
         ResetAll();
         SetCollector(enableCollector);
+        SetGrip(enableGrip);
+        ProjectileInteractions.Install();
     }
 
     public void SetCollector(bool enabled)
     {
         if (!installed || enabled == collector) return;
         collector = enabled;
-        if (enabled)
-        {
-            On.HealthManager.TakeDamage += OnDamage;
-            On.SpellFluke.DoDamage += OnFlukeDamage;
-            ModHooks.SoulGainHook += OnNailSoul;
-        }
-        else
-        {
-            On.HealthManager.TakeDamage -= OnDamage;
-            On.SpellFluke.DoDamage -= OnFlukeDamage;
-            ModHooks.SoulGainHook -= OnNailSoul;
-        }
+        RefreshDamageHooks();
         ResetSoul();
+    }
+
+    public void SetGrip(bool enabled)
+    {
+        if (!installed || enabled == (grip != null)) return;
+        if (enabled) { grip = new MageGripRuntime(this); grip.Install(); }
+        else { grip?.Uninstall(); grip = null; }
+        RefreshDamageHooks();
+        ResetSoul();
+    }
+
+    private void RefreshDamageHooks()
+    {
+        bool needed = collector || grip != null;
+        if (needed != damageHooks)
+        {
+            if (needed)
+            {
+                On.HealthManager.TakeDamage += OnDamage;
+                On.SpellFluke.DoDamage += OnFlukeDamage;
+            }
+            else
+            {
+                On.HealthManager.TakeDamage -= OnDamage;
+                On.SpellFluke.DoDamage -= OnFlukeDamage;
+            }
+            damageHooks = needed;
+        }
+        ModHooks.SoulGainHook -= OnNailSoul;
+        if (collector) ModHooks.SoulGainHook += OnNailSoul;
     }
 
     public void Uninstall()
     {
         if (!installed) return;
+        SetGrip(false);
         SetCollector(false);
+        ProjectileInteractions.Uninstall();
+        SpellProjectile.RestoreAll();
         On.HutongGames.PlayMaker.FsmState.OnEnter -= OnStateEnter;
         On.SpellFluke.OnEnable -= OnFlukeEnable;
+        ModHooks.ObjectPoolSpawnHook -= OnPoolSpawn;
         ModHooks.BeforeSceneLoadHook -= BeforeSceneLoad;
         ModHooks.AfterSavegameLoadHook -= AfterLoad;
         ModHooks.NewGameHook -= ResetAll;
@@ -83,16 +112,18 @@ public sealed class SpellRuntime : MonoBehaviour
     private void AfterLoad(SaveGameData data) => ResetAll();
     private void ResetSoul()
     {
-        ledger.Reset(); spellSoul.Reset(); nailSoul.Reset();
+        ledger.Reset(); spellSoul.Reset(); nailSoul.Reset(); gripSoul.Reset();
         sources.Clear(); casts.Clear(); current = null; spawnContext = null;
     }
     private void ResetAll()
     {
+        grip?.Reset();
+        SpellProjectile.RetireSmall();
         ResetSoul(); heat.Reset(); feedback.Reset();
         hero = null; lastTime = Time.timeAsDouble;
     }
 
-    private bool CanPlay => installed && GameManager.UnsafeInstance != null &&
+    internal bool CanPlay => installed && GameManager.UnsafeInstance != null &&
         GameManager.UnsafeInstance.IsGameplayScene() && !GameManager.UnsafeInstance.isPaused &&
         GameManager.UnsafeInstance.gameState == GameState.PLAYING && hero != null && !hero.cState.dead;
 
@@ -143,13 +174,14 @@ public sealed class SpellRuntime : MonoBehaviour
         }
     }
 
-    private CastRecord BeginCast()
+    private CastRecord BeginCast(CastKind kind = CastKind.NormalSpell)
     {
         AdvanceClock();
-        heat.AddCast(CastKind.NormalSpell);
-        current = new CastRecord(ledger.BeginCast());
-        casts.Add(current);
-        return current;
+        heat.AddCast(kind);
+        var cast = new CastRecord(ledger.BeginCast(), kind);
+        if (kind != CastKind.SmallProjectile) current = cast;
+        casts.Add(cast);
+        return cast;
     }
 
     private void Bind(GameObject? root, CastRecord cast, int group)
@@ -208,14 +240,49 @@ public sealed class SpellRuntime : MonoBehaviour
                 (fsm.Name == "Fireball Control" && state.Name == "Set Damage") ||
                 (owner.name.StartsWith("Spell Fluke Dung", StringComparison.Ordinal) && state.Name == "Init") ||
                 (owner.name.StartsWith("Dung Explosion", StringComparison.Ordinal) && state.Name == "Explode");
-            if (projectileStart && spawnContext != null)
-                Bind(owner, spawnContext, owner.name.StartsWith("Spell Fluke", StringComparison.Ordinal) ? spawnContext.NextGroup++ : 0);
+            if (projectileStart)
+            {
+                var activation = spawnContext;
+                if (fsm.Name == "Fireball Control" || fsm.Name == "Fireball Cast")
+                    activation = activation ?? owner.GetComponent<SpellProjectile>()?.ActivationCast;
+                sources.Remove(owner);
+                if (activation != null)
+                    Bind(owner, activation, owner.name.StartsWith("Spell Fluke", StringComparison.Ordinal) ? activation.NextGroup++ : 0);
+                if (fsm.Name == "Fireball Control")
+                    SpellProjectile.Prepare(owner, this, activation);
+            }
             context = FindSource(owner)?.Cast;
         }
         var previous = spawnContext;
         spawnContext = context ?? previous;
-        try { orig(state); }
-        finally { spawnContext = previous; }
+        var projectile = owner != null ? owner.GetComponent<SpellProjectile>() : null;
+        projectile?.BeforeState(state);
+        bool prepaid = grip?.BeforeSpellState(state) == true;
+        try
+        {
+            orig(state);
+            projectile?.AfterState(state);
+        }
+        finally
+        {
+            if (prepaid) grip?.AfterSpellState();
+            spawnContext = previous;
+        }
+    }
+
+    private GameObject OnPoolSpawn(GameObject obj)
+    {
+        if (obj == null || !obj.name.StartsWith("Fireball", StringComparison.Ordinal)) return obj!;
+        foreach (var fsm in obj.GetComponents<PlayMakerFSM>())
+        {
+            if (fsm.FsmName != "Fireball Cast" && fsm.FsmName != "Fireball Control") continue;
+            // Start/OnEnable may run synchronously or on the next frame. Stamp both paths.
+            sources.Remove(obj);
+            if (spawnContext != null) Bind(obj, spawnContext, 0);
+            SpellProjectile.Prepare(obj, this, spawnContext);
+            break;
+        }
+        return obj;
     }
 
     private void OnFlukeEnable(On.SpellFluke.orig_OnEnable orig, SpellFluke self)
@@ -248,18 +315,57 @@ public sealed class SpellRuntime : MonoBehaviour
 
     private void Reward(DamageSource source, int targetId)
     {
-        if (!collector || !CanPlay || PlayerData.instance == null) return;
+        if (!CanPlay || PlayerData.instance == null) return;
+        bool small = source.Cast.Kind == CastKind.SmallProjectile;
+        if (small ? grip == null : !collector) return;
         AdvanceClock();
         var data = PlayerData.instance;
         int segment = source.Segment(targetId, Time.fixedTimeAsDouble);
-        double amount = ledger.Hit(source.Cast.Id, segment, heat.Heat,
+        if (!casts.Contains(source.Cast)) return;
+        double amount;
+        if (small)
+        {
+            if (!source.Cast.RewardedTargets.Add(targetId)) return;
+            amount = GripAttack.Soul(data.GetInt("MPCharge") >= data.GetInt("maxMP"),
+                data.GetBool("equippedCharm_20"), data.GetBool("equippedCharm_21"));
+        }
+        else amount = ledger.Hit(source.Cast.Id, segment, heat.Heat,
             data.GetBool("equippedCharm_20"), data.GetBool("equippedCharm_21"));
+        var accumulator = small ? gripSoul : spellSoul;
         if (data.GetInt("MPCharge") >= data.GetInt("maxMP") && data.GetInt("MPReserve") >= data.GetInt("MPReserveMax"))
-        { spellSoul.Reset(); return; }
-        int whole = spellSoul.Add(amount);
+        { accumulator.Reset(); return; }
+        int whole = accumulator.Add(amount);
         if (whole > 0 && hero != null && GameCameras.instance != null && GameCameras.instance.soulOrbFSM != null &&
             GameManager.UnsafeInstance.soulVessel_fsm != null)
             hero.AddMPCharge(whole); // Bypasses SoulGainHook; no recursive halving of spell refunds.
+    }
+
+    internal bool SpawnSmall(HeroController self, float angle)
+    {
+        var recipe = MageGripRuntime.FindProjectile(self);
+        if (recipe.Prefab == null) return false;
+        var cast = BeginCast(CastKind.SmallProjectile);
+        cast.Angle = angle;
+        cast.Speed = recipe.Speed;
+        cast.Damage = GripAttack.Damage(PlayerData.instance.GetInt("nailDamage"));
+        var previous = spawnContext;
+        spawnContext = cast;
+        try
+        {
+            Vector3 direction = Quaternion.Euler(0, 0, angle) * Vector3.right;
+            var projectile = recipe.Prefab.Spawn(self.transform.position + direction * 0.6f, Quaternion.identity);
+            Bind(projectile, cast, 0);
+            var marker = SpellProjectile.Prepare(projectile, this, cast);
+            marker.Launch(recipe.Speed);
+            return true;
+        }
+        finally { spawnContext = previous; }
+    }
+
+    internal void ProjectilePogo(CastRecord cast)
+    {
+        if (grip == null || !casts.Contains(cast) || cast.PogoUsed || cast.Kind != CastKind.SmallProjectile || cast.Angle != 270) return;
+        if (grip.QueuePogo()) cast.PogoUsed = true;
     }
 
     private int OnNailSoul(int amount) => nailSoul.Add(Math.Max(0, amount) / 2.0);
