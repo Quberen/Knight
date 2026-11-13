@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using GlobalEnums;
 using HutongGames.PlayMaker;
 using Modding;
@@ -25,12 +26,19 @@ public sealed class SpellRuntime : MonoBehaviour
     private MageGripRuntime? grip;
     private readonly SoulAccumulator gripSoul = new SoulAccumulator();
     private HeroController? hero;
+    private Settings settings = new Settings();
+    private static readonly FieldInfo FlukeDamage = typeof(SpellFluke).GetField("damage", BindingFlags.Instance | BindingFlags.NonPublic)!;
+    internal bool ShamanMasterEnabled => settings.ShamanMasterEnabled;
+    internal bool FastCastingEnabled => settings.FastCastingEnabled;
     public bool CollectorEnabled => collector;
+    public bool GripEnabled => grip != null;
 
-    public void Install(bool enableCollector, bool enableGrip)
+    public void Install(Settings value)
     {
         if (installed) return;
+        settings = value;
         installed = true;
+        On.HeroController.QuakeInvuln += OnQuakeInvuln;
         On.HutongGames.PlayMaker.FsmState.OnEnter += OnStateEnter;
         On.SpellFluke.OnEnable += OnFlukeEnable;
         ModHooks.ObjectPoolSpawnHook += OnPoolSpawn;
@@ -40,9 +48,26 @@ public sealed class SpellRuntime : MonoBehaviour
         ModHooks.BeforePlayerDeadHook += ResetAll;
         UnityEngine.SceneManagement.SceneManager.activeSceneChanged += OnSceneChanged;
         ResetAll();
-        SetCollector(enableCollector);
-        SetGrip(enableGrip);
+        SetCollector(settings.SoulCollectorEnabled);
+        SetGrip(settings.MageGripEnabled);
         ProjectileInteractions.Install();
+    }
+
+    internal void ApplySettings(Settings value)
+    {
+        grip?.Reset();
+        settings = value;
+        SetCollector(value.SoulCollectorEnabled);
+        SetGrip(value.MageGripEnabled);
+    }
+
+    internal void ResetCharge() => grip?.Reset();
+
+    private void OnQuakeInvuln(On.HeroController.orig_QuakeInvuln orig, HeroController self)
+    {
+        orig(self);
+        // Resolve at use time so a null setting keeps tracking the live vanilla duration.
+        self.parryInvulnTimer = (float)QuakeInvulnerability.Resolve(settings.QuakeInvulnerabilitySeconds, self.INVUL_TIME_QUAKE);
     }
 
     public void SetCollector(bool enabled)
@@ -86,6 +111,7 @@ public sealed class SpellRuntime : MonoBehaviour
     public void Uninstall()
     {
         if (!installed) return;
+        On.HeroController.QuakeInvuln -= OnQuakeInvuln;
         SetGrip(false);
         SetCollector(false);
         ProjectileInteractions.Uninstall();
@@ -115,6 +141,7 @@ public sealed class SpellRuntime : MonoBehaviour
     {
         grip?.Reset();
         SpellProjectile.RetireSmall();
+        ChargedSpellEffect.RestoreAll();
         ResetSoul();
         hero = null;
     }
@@ -142,7 +169,7 @@ public sealed class SpellRuntime : MonoBehaviour
         foreach (var pair in sources)
         {
             GameObject key = pair.Key;
-            bool dead = key == null || (!key.activeInHierarchy && pair.Value.Cast.CreatedFrame < Time.frameCount);
+            bool dead = key == null || (!key.activeInHierarchy && pair.Value.Cast != current && pair.Value.Cast.CreatedFrame < Time.frameCount);
             if (dead) continue;
             remaining[key!] = pair.Value;
             liveCasts.Add(pair.Value.Cast.Id);
@@ -181,6 +208,14 @@ public sealed class SpellRuntime : MonoBehaviour
         return null;
     }
 
+    private void BindHeroPart(GameObject? root, CastRecord cast, int group)
+    {
+        if (root == null) return;
+        Bind(root, cast, group);
+        ChargedSpellEffect.RestoreTree(root);
+        if (cast.Kind == CastKind.ChargedSpell) ChargedSpellEffect.Prepare(root, cast, true);
+    }
+
     private void BindHeroSpell(CastRecord cast, string state)
     {
         if (hero == null) return;
@@ -188,14 +223,14 @@ public sealed class SpellRuntime : MonoBehaviour
         if (spells == null) return;
         if (state.StartsWith("Scream", StringComparison.Ordinal))
         {
-            Bind(spells.Find(state == "Scream Burst 2" ? "Scr Heads 2" : "Scr Heads")?.gameObject, cast, 0);
+            BindHeroPart(spells.Find(state == "Scream Burst 2" ? "Scr Heads 2" : "Scr Heads")?.gameObject, cast, 0);
         }
         else if (state == "Quake Antic" || state == "Enter Quake")
         {
-            Bind(spells.Find("Q Fall Damage")?.gameObject, cast, 0);
-            Bind(spells.Find("Q Slam")?.gameObject, cast, 1);
-            Bind(spells.Find("Q Slam 2")?.gameObject, cast, 1);
-            Bind(spells.Find("Q Mega")?.gameObject, cast, 2);
+            BindHeroPart(spells.Find("Q Fall Damage")?.gameObject, cast, 0);
+            BindHeroPart(spells.Find("Q Slam")?.gameObject, cast, 1);
+            BindHeroPart(spells.Find("Q Slam 2")?.gameObject, cast, 1);
+            BindHeroPart(spells.Find("Q Mega")?.gameObject, cast, 2);
         }
     }
 
@@ -211,7 +246,9 @@ public sealed class SpellRuntime : MonoBehaviour
             if (name == "Fireball 1" || name == "Fireball 2" || name == "Quake Antic" ||
                 name == "Enter Quake" || name == "Scream Burst 1" || name == "Scream Burst 2")
             {
-                context = BeginCast();
+                var recipe = grip?.SpellKind(state) ?? (CastKind.NormalSpell, false);
+                context = BeginCast(recipe.Item1);
+                context.ShamanStone = recipe.Item2;
                 BindHeroSpell(context, name);
             }
             else if (name == "Spell End" || name == "Cancel All") current = null;
@@ -237,19 +274,31 @@ public sealed class SpellRuntime : MonoBehaviour
             }
             context = FindSource(owner)?.Cast;
         }
+        ChargedSpellEffect? charged = null;
+        if (owner != null && (hero == null || owner != hero.gameObject) && context?.Kind == CastKind.ChargedSpell)
+        {
+            bool fireball = fsm!.Name == "Fireball Control";
+            // Child hitboxes have their own activation/restore lifetime, but only
+            // the visual root is enlarged; otherwise colliders would grow twice.
+            charged = ChargedSpellEffect.Prepare(owner, context, fireball);
+        }
         var previous = spawnContext;
         spawnContext = context ?? previous;
         var projectile = owner != null ? owner.GetComponent<SpellProjectile>() : null;
         projectile?.BeforeState(state);
-        bool prepaid = grip?.BeforeSpellState(state) == true;
+        var restoreDamageActions = charged?.BeforeDamageState(state);
+        var debitOwner = grip;
+        bool prepaid = debitOwner?.BeforeSpellState(state) == true;
         try
         {
             orig(state);
             projectile?.AfterState(state);
+            charged?.AfterState(state);
         }
         finally
         {
-            if (prepaid) grip?.AfterSpellState();
+            restoreDamageActions?.Invoke();
+            if (prepaid) debitOwner?.AfterSpellState();
             spawnContext = previous;
         }
     }
@@ -274,6 +323,14 @@ public sealed class SpellRuntime : MonoBehaviour
         sources.Remove(self.gameObject); // Object pool reuse cannot inherit a retired cast.
         if (spawnContext != null) Bind(self.gameObject, spawnContext, spawnContext.NextGroup++);
         orig(self);
+        if (spawnContext?.Kind == CastKind.ChargedSpell)
+        {
+            var effect = ChargedSpellEffect.Prepare(self.gameObject, spawnContext, true);
+            int original = (int)FlukeDamage.GetValue(self)!;
+            effect.RestoreWith(() => { if (self != null) FlukeDamage.SetValue(self, original); });
+            FlukeDamage.SetValue(self, SpellDamage.Calculate(4, true, spawnContext.ShamanStone));
+            effect.Enlarge();
+        }
     }
 
     private void OnDamage(On.HealthManager.orig_TakeDamage orig, HealthManager self, HitInstance hit)

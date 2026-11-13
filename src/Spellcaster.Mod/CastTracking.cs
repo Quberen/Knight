@@ -11,6 +11,7 @@ internal sealed class CastRecord
     public float Angle;
     public float Speed;
     public int Damage;
+    public bool ShamanStone;
     public bool PogoUsed;
     public readonly HashSet<int> RewardedTargets = new HashSet<int>();
     public readonly int CreatedFrame = Time.frameCount;

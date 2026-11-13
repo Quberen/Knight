@@ -22,6 +22,8 @@ internal sealed class MageGripRuntime
     private PlayMakerFSM? prepaidFsm;
     private string? prepaidState;
     private int suppressDebit;
+    private CastKind prepaidKind;
+    private bool prepaidShamanStone;
     private static readonly Dictionary<string, FieldInfo> Fields = new Dictionary<string, FieldInfo>();
     private static readonly MethodInfo SetStateMethod = typeof(HeroController).GetMethod("SetState", BindingFlags.Instance | BindingFlags.NonPublic)!;
     private static readonly MethodInfo CanAttackMethod = typeof(HeroController).GetMethod("CanAttack", BindingFlags.Instance | BindingFlags.NonPublic)!;
@@ -137,9 +139,11 @@ internal sealed class MageGripRuntime
         float angle = Direction(self);
         string levelName = angle == 90 ? "screamLevel" : angle == 270 ? "quakeLevel" : "fireballLevel";
         var release = attack.Release(Time.timeAsDouble, PlayerData.instance.GetInt("MPCharge"),
-            PlayerData.instance.GetInt(levelName) > 0);
+            PlayerData.instance.GetInt(levelName) > 0, runtime.ShamanMasterEnabled,
+            PlayerData.instance.GetBool("equippedCharm_19"), runtime.FastCastingEnabled,
+            PlayerData.instance.GetBool("equippedCharm_33"));
         if (!NativeCanAttack(self)) return;
-        if (release == GripRelease.NormalSpell && TrySpell(self, angle, levelName))
+        if ((release == GripRelease.NormalSpell || release == GripRelease.ChargedSpell) && TrySpell(self, angle, levelName, release))
         {
             attack.Commit(Time.timeAsDouble, Interval(self));
             Set(self, "attack_cooldown", Interval(self));
@@ -184,24 +188,31 @@ internal sealed class MageGripRuntime
         pendingAngle = angle;
     }
 
-    private bool TrySpell(HeroController self, float angle, string levelName)
+    private bool TrySpell(HeroController self, float angle, string levelName, GripRelease release)
     {
         var fsm = PlayMakerFSM.FindFsmOnGameObject(self.gameObject, "Spell Control");
         if (fsm == null || fsm.ActiveStateName != "Inactive" || !self.CanCast()) return false;
         int level = PlayerData.instance.GetInt(levelName);
         string state = angle == 270 ? "Quake Antic" : angle == 90 ? (level > 1 ? "Scream Antic2" : "Scream Antic1") : "Fireball Antic";
         string debit = angle == 270 ? "Level Check 2" : angle == 90 ? (level > 1 ? "Scream Burst 2" : "Scream Burst 1") : (level > 1 ? "Fireball 2" : "Fireball 1");
-        if (!fsm.FsmStates.Any(s => s.Name == state) || PlayerData.instance.GetInt("MPCharge") < GripAttack.SoulCost) return false;
+        int cost = GripAttack.Cost(release, PlayerData.instance.GetBool("equippedCharm_33"));
+        if (!fsm.FsmStates.Any(s => s.Name == state) || PlayerData.instance.GetInt("MPCharge") < cost) return false;
         if (angle == 0) self.FaceRight();
         if (angle == 180) self.FaceLeft();
         fsm.FsmVariables.FindFsmInt("Spell Level").Value = level;
-        self.TakeMP(GripAttack.SoulCost);
+        self.TakeMP(cost);
         prepaidFsm = fsm;
         prepaidState = debit;
+        prepaidKind = GripAttack.Kind(release);
+        prepaidShamanStone = PlayerData.instance.GetBool("equippedCharm_19");
         pendingAngle = null; pendingPogo = false;
         fsm.SetState(state);
         return true;
     }
+
+    internal (CastKind Kind, bool ShamanStone) SpellKind(FsmState state) =>
+        prepaidFsm != null && state.Fsm == prepaidFsm.Fsm
+            ? (prepaidKind, prepaidShamanStone) : (CastKind.NormalSpell, false);
 
     internal bool BeforeSpellState(FsmState state)
     {
