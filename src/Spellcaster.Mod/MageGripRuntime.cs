@@ -42,6 +42,8 @@ internal sealed class MageGripRuntime
     internal void Install()
     {
         On.HeroController.Update += OnUpdate;
+        On.HeroController.ResetMotion += OnResetMotion;
+        On.HeroController.RelinquishControlNotVelocity += OnRelinquishControlNotVelocity;
         On.HeroAnimationController.Update += OnAnimationUpdate;
         On.HeroController.FixedUpdate += OnFixedUpdate;
         On.HeroController.CancelBounce += OnCancelBounce;
@@ -53,6 +55,8 @@ internal sealed class MageGripRuntime
     {
         Reset();
         On.HeroController.Update -= OnUpdate;
+        On.HeroController.ResetMotion -= OnResetMotion;
+        On.HeroController.RelinquishControlNotVelocity -= OnRelinquishControlNotVelocity;
         On.HeroAnimationController.Update -= OnAnimationUpdate;
         On.HeroController.FixedUpdate -= OnFixedUpdate;
         On.HeroController.CancelBounce -= OnCancelBounce;
@@ -96,15 +100,45 @@ internal sealed class MageGripRuntime
     /// attack-recoil and walking — the charge is kept as long as Quick Cast stays held.
     /// Damage is handled separately via <see cref="OnHurt"/>, mirroring vanilla nail arts.
     /// </summary>
-    private bool MustDropCharge(HeroController self) => GripAttack.MustDropCharge(runtime.CanPlay,
+    private bool MustDropCharge(HeroController self) => GripAttack.MustDropCharge(
+        GameManager.UnsafeInstance != null && GameManager.UnsafeInstance.IsGameplayScene() &&
+        (GameManager.UnsafeInstance.isPaused || GameManager.UnsafeInstance.gameState == GameState.PLAYING),
         self.cState.transitioning, self.cState.dead, self.cState.hazardDeath,
-        self.cState.hazardRespawning, self.hero_state == ActorStates.no_input);
+        self.cState.hazardRespawning, self.hero_state == ActorStates.no_input) ||
+        (bool)Field("controlReqlinquished").GetValue(self)!;
 
     // Small-shot pogo / recoil only. Not used to drop a stored Quick Cast charge.
     private bool Ready(HeroController self) => runtime.CanPlay && !self.cState.transitioning &&
         !self.cState.dead && !self.cState.hazardDeath && !self.cState.hazardRespawning &&
         !self.cState.recoiling && !self.cState.recoilFrozen && !self.cState.dashing &&
         !self.cState.backDashing && self.hero_state != ActorStates.no_input;
+
+    private bool CanFire(HeroController self) => new GripFireGate
+    {
+        Gameplay = runtime.CanPlay,
+        CanInput = self.CanInput(),
+        Paused = GameManager.UnsafeInstance == null || GameManager.UnsafeInstance.isPaused,
+        Attacking = self.cState.attacking,
+        Dashing = self.cState.dashing,
+        Dead = self.cState.dead,
+        HazardDeath = self.cState.hazardDeath,
+        HazardRespawning = self.cState.hazardRespawning,
+        ControlRelinquished = (bool)Field("controlReqlinquished").GetValue(self)!,
+        NoInput = self.hero_state == ActorStates.no_input,
+        HardLanding = self.hero_state == ActorStates.hard_landing,
+        DashLanding = self.hero_state == ActorStates.dash_landing,
+        BackDashing = self.cState.backDashing,
+        Recoiling = self.cState.recoiling,
+        RecoilingLeft = self.cState.recoilingLeft,
+        RecoilingRight = self.cState.recoilingRight,
+        RecoilFrozen = self.cState.recoilFrozen,
+        Transitioning = self.cState.transitioning,
+        Focusing = self.cState.focusing,
+        AtBench = PlayerData.instance.GetBool("atBench"),
+        InAcid = self.inAcid || self.cState.inAcid,
+        AttackCooldown = (float)Field("attack_cooldown").GetValue(self)!,
+        DialogueEndTimer = (float)Field("preventCastByDialogueEndTimer").GetValue(self)!
+    }.Allowed;
 
     private static float Interval(HeroController self) =>
         (float)GripAttack.SmallShotInterval(self.ATTACK_COOLDOWN_TIME_CH);
@@ -140,10 +174,24 @@ internal sealed class MageGripRuntime
     {
         if (hero != null) HideVisuals(hero);
         smallShotClip = null;
-        attack.CancelHold();
+        attack.ResetCharge();
         pending.Clear();
         visTier = 0;
         visWinding = false;
+    }
+
+    private void OnResetMotion(On.HeroController.orig_ResetMotion orig, HeroController self)
+    {
+        orig(self);
+        OnHurt();
+    }
+
+    private void OnRelinquishControlNotVelocity(On.HeroController.orig_RelinquishControlNotVelocity orig,
+        HeroController self)
+    {
+        bool relinquished = (bool)Field("controlReqlinquished").GetValue(self)!;
+        orig(self);
+        if (!relinquished) OnHurt();
     }
 
     private void OnUpdate(On.HeroController.orig_Update orig, HeroController self)
@@ -157,22 +205,26 @@ internal sealed class MageGripRuntime
             pending.Clear();
             return;
         }
-        if (MustDropCharge(self))
+        var input = Actions(self);
+        double now = Time.unscaledTimeAsDouble;
+        bool paused = GameManager.UnsafeInstance != null && GameManager.UnsafeInstance.isPaused;
+        bool drop = MustDropCharge(self);
+        bool canCharge = !drop && GripAttack.CanCharge(self.cState.attacking,
+            (bool)Field("controlReqlinquished").GetValue(self)!, self.cState.recoiling,
+            self.cState.recoilingLeft, self.cState.recoilingRight);
+        attack.Tick(now, input.quickCast.IsPressed, canCharge, paused, drop, Time.deltaTime);
+        if (drop || paused)
         {
-            if (attack.Holding || visTier > 0 || visWinding) { HideVisuals(self); attack.CancelHold(); }
-            pending.Clear();
+            HideVisuals(self);
+            if (drop || !input.quickCast.IsPressed) pending.Clear();
+            if (!input.quickCast.IsPressed) attack.CancelHold();
             return;
         }
-        var input = Actions(self);
-        double now = Time.timeAsDouble;
-        if (input.quickCast.WasPressed)
+        if (input.quickCast.IsPressed)
         {
-            attack.Press(now);
-            if (attack.Holding) pending.Clear();
-        }
-        if (attack.Holding && input.quickCast.IsPressed)
-        {
-            SyncVisuals(self, now);
+            pending.Clear();
+            if (canCharge) SyncVisuals(self, now);
+            else HideVisuals(self);
             return;
         }
         if (attack.Holding)
@@ -183,14 +235,15 @@ internal sealed class MageGripRuntime
             var release = attack.Release(now, PlayerData.instance.GetInt("MPCharge"),
                 PlayerData.instance.GetInt(levelName) > 0, runtime.ShamanMasterEnabled,
                 PlayerData.instance.GetBool("equippedCharm_19"), runtime.FastCastingEnabled,
-                PlayerData.instance.GetBool("equippedCharm_33"));
-            if (!TryFire(self, angle, levelName, release))
+                PlayerData.instance.GetBool("equippedCharm_33"), CanFire(self), deferCharged: true);
+            if (!TryFire(self, angle, levelName, release) &&
+                (release == GripRelease.NormalSpell || release == GripRelease.ChargedSpell))
             {
                 pending.Queue(now, (int)angle, release);
             }
             return;
         }
-        if (pending.TryGet(now, out int pendingDirection, out var pendingRelease))
+        if (pending.TryGet(now, out int pendingDirection, out var pendingRelease, CanFire(self)))
         {
             string levelName = pendingDirection == 90 ? "screamLevel" : pendingDirection == 270 ? "quakeLevel" : "fireballLevel";
             if (TryFire(self, pendingDirection, levelName, pendingRelease)) pending.Clear();
@@ -200,10 +253,11 @@ internal sealed class MageGripRuntime
     private bool TryFire(HeroController self, float angle, string levelName, GripRelease release)
     {
         if (release == GripRelease.None) return true;
+        if (!CanFire(self) || !attack.CanAttack(Time.unscaledTimeAsDouble)) return false;
         if ((release == GripRelease.NormalSpell || release == GripRelease.ChargedSpell) &&
             TrySpell(self, angle, levelName, release))
         {
-            attack.Commit(Time.timeAsDouble, HeldSpellInterval(self));
+            attack.Commit(Time.unscaledTimeAsDouble, HeldSpellInterval(self));
             return true;
         }
         if (release == GripRelease.SmallProjectile)
@@ -227,7 +281,7 @@ internal sealed class MageGripRuntime
     private void FireSmall(HeroController self, float angle)
     {
         if (!runtime.SpawnSmall(self, angle)) return;
-        attack.Commit(Time.timeAsDouble, Interval(self));
+        attack.Commit(Time.unscaledTimeAsDouble, Interval(self));
         pendingAngle = angle;
         if (angle == 0) self.FaceRight();
         if (angle == 180) self.FaceLeft();
@@ -256,7 +310,7 @@ internal sealed class MageGripRuntime
     private bool TrySpell(HeroController self, float angle, string levelName, GripRelease release)
     {
         var fsm = PlayMakerFSM.FindFsmOnGameObject(self.gameObject, "Spell Control");
-        // Looser than CanCast: a stored charge can be released mid-dash / mid-nail.
+        // The shared fire gate has already passed; also require an idle spell FSM.
         if (fsm == null || fsm.ActiveStateName != "Inactive") return false;
         if (self.cState.dead || self.cState.transitioning || self.hero_state == ActorStates.no_input) return false;
         int level = PlayerData.instance.GetInt(levelName);

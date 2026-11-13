@@ -34,11 +34,32 @@ public sealed class GripAttack
         !canPlay || transitioning || dead || hazardDeath || hazardRespawning || noInput;
 
     public bool CanAttack(double now) => now + 1e-9 >= nextAttack;
-    public void Press(double now)
+    private double lastTick;
+    public double ChargeElapsed { get; private set; }
+    private bool tapEligible;
+
+    public static bool CanCharge(bool attacking, bool controlRelinquished, bool recoiling,
+        bool recoilingLeft, bool recoilingRight) =>
+        !attacking && !controlRelinquished && !recoiling && !recoilingLeft && !recoilingRight;
+
+    // now is unscaled wall time; deltaSeconds is gameplay time for this frame.
+    // A missing press edge is intentionally irrelevant to charge accumulation.
+    public void Tick(double now, bool isPressed, bool canCharge, bool paused = false,
+        bool reset = false, double? deltaSeconds = null)
     {
         Numbers.RequireFiniteNonnegative(now, nameof(now));
-        if (!Holding && CanAttack(now)) pressedAt = now;
+        double dt = deltaSeconds ?? (Holding ? Math.Max(0, now - lastTick) : 0);
+        Numbers.RequireFiniteNonnegative(dt, nameof(deltaSeconds));
+        lastTick = now;
+        if (isPressed && !Holding) { pressedAt = now; tapEligible = true; }
+        if (reset || (paused && !isPressed)) ResetCharge();
+        if (paused && !isPressed) CancelHold();
+        if (isPressed && canCharge && !paused && !reset) ChargeElapsed += dt;
     }
+
+    // Preserve the physical hold and its original age across a reset. It must
+    // not turn a long, interrupted hold into a fresh tap.
+    public void ResetCharge() { ChargeElapsed = 0; tapEligible = false; }
 
     public double Held(double now)
     {
@@ -50,7 +71,7 @@ public sealed class GripAttack
     public int StoredTier(double now, bool shamanMaster = false, bool shamanStone = false, bool fastCasting = false)
     {
         if (!Holding) return 0;
-        double held = Held(now) + 1e-9;
+        double held = ChargeElapsed + 1e-9;
         if (shamanMaster && held >= SecondChargeSeconds(shamanStone, fastCasting)) return 2;
         if (held >= ChargeSeconds) return 1;
         return 0;
@@ -60,7 +81,7 @@ public sealed class GripAttack
     public bool Winding(double now, bool shamanMaster = false, bool shamanStone = false, bool fastCasting = false)
     {
         if (!Holding) return false;
-        double held = Held(now) + 1e-9;
+        double held = ChargeElapsed + 1e-9;
         if (held < TapSeconds) return false;
         int tier = StoredTier(now, shamanMaster, shamanStone, fastCasting);
         if (tier >= 2) return false;
@@ -69,20 +90,24 @@ public sealed class GripAttack
     }
 
     public GripRelease Release(double now, int soul, bool spellUnlocked,
-        bool shamanMaster = false, bool shamanStone = false, bool fastCasting = false, bool spellTwister = false)
+        bool shamanMaster = false, bool shamanStone = false, bool fastCasting = false, bool spellTwister = false,
+        bool canFire = true, bool deferCharged = false)
     {
         Numbers.RequireFiniteNonnegative(now, nameof(now));
         var start = pressedAt;
-        pressedAt = null;
+        double charged = ChargeElapsed + 1e-9;
+        bool tap = tapEligible;
+        CancelHold();
         if (!start.HasValue || !CanAttack(now)) return GripRelease.None;
         double held = now - start.Value + 1e-9;
         // Genuine tap only. Past the tap window an unfinished charge is a no-op,
         // matching vanilla nail arts (release before full charge does nothing extra).
-        if (held < TapSeconds) return GripRelease.SmallProjectile;
+        if (tap && held < TapSeconds) return canFire ? GripRelease.SmallProjectile : GripRelease.None;
+        if (!canFire && !deferCharged) return GripRelease.None;
         if (!spellUnlocked) return GripRelease.None;
-        if (shamanMaster && held >= SecondChargeSeconds(shamanStone, fastCasting) &&
+        if (shamanMaster && charged >= SecondChargeSeconds(shamanStone, fastCasting) &&
             soul >= Cost(GripRelease.ChargedSpell, spellTwister)) return GripRelease.ChargedSpell;
-        if (held >= ChargeSeconds && soul >= SoulCost) return GripRelease.NormalSpell;
+        if (charged >= ChargeSeconds && soul >= SoulCost) return GripRelease.NormalSpell;
         return GripRelease.None;
     }
 
@@ -111,8 +136,8 @@ public sealed class GripAttack
         nextAttack = now + interval;
     }
 
-    public void CancelHold() => pressedAt = null;
-    public void Reset() { pressedAt = null; nextAttack = 0; }
+    public void CancelHold() { pressedAt = null; ResetCharge(); }
+    public void Reset() { CancelHold(); nextAttack = 0; lastTick = 0; }
 
     public static int Damage(int nailDamage) => (int)Math.Round(Math.Max(0, nailDamage) * 0.5);
 
@@ -176,17 +201,18 @@ public sealed class GripPendingCast
     {
         Numbers.RequireFiniteNonnegative(now, nameof(now));
         direction = releaseDirection;
-        release = kind;
+        release = kind == GripRelease.NormalSpell || kind == GripRelease.ChargedSpell
+            ? kind : GripRelease.None;
         until = now + 1;
     }
 
-    public bool TryGet(double now, out int releaseDirection, out GripRelease kind)
+    public bool TryGet(double now, out int releaseDirection, out GripRelease kind, bool canFire = true)
     {
         Numbers.RequireFiniteNonnegative(now, nameof(now));
         if (now > until) Clear();
         releaseDirection = direction;
         kind = release;
-        return release != GripRelease.None;
+        return canFire && release != GripRelease.None;
     }
 
     public void Clear() => release = GripRelease.None;

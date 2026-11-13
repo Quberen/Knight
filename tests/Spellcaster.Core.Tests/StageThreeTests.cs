@@ -14,9 +14,11 @@ public class StageThreeTests
     {
         Assert.Equal(seconds, GripAttack.SecondChargeSeconds(stone, fast), 10);
         var attack = new GripAttack();
-        attack.Press(10);
+        attack.Tick(10, true, true);
+        attack.Tick(10 + seconds - .00001, true, true);
         Assert.Equal(GripRelease.NormalSpell, attack.Release(10 + seconds - .00001, 99, true, true, stone, fast));
-        attack.Press(20);
+        attack.Tick(20, true, true);
+        attack.Tick(20 + seconds, true, true);
         Assert.Equal(GripRelease.ChargedSpell, attack.Release(20 + seconds, 99, true, true, stone, fast));
     }
 
@@ -37,7 +39,8 @@ public class StageThreeTests
     public void ReleaseSelectsOneAffordableTier(double seconds, int soul, bool twister, bool master, bool unlocked,
         GripRelease expected, int cost, CastKind? kind)
     {
-        var attack = new GripAttack(); attack.Press(5);
+        var attack = new GripAttack(); attack.Tick(5, true, true);
+        attack.Tick(5 + seconds, true, true);
         var release = attack.Release(5 + seconds, soul, unlocked, master, false, false, twister);
         Assert.Equal(expected, release);
         Assert.Equal(cost, GripAttack.Cost(release, twister));
@@ -49,11 +52,12 @@ public class StageThreeTests
     [Fact]
     public void ResetAndCancelDiscardSecondCharge()
     {
-        var attack = new GripAttack(); attack.Press(0); attack.Reset();
+        var attack = new GripAttack(); attack.Tick(0, true, true); attack.Reset();
         Assert.Equal(GripRelease.None, attack.Release(10, 99, true, true));
-        attack.Press(11); attack.CancelHold();
+        attack.Tick(11, true, true); attack.CancelHold();
         Assert.Equal(GripRelease.None, attack.Release(20, 99, true, true));
-        attack.Press(21);
+        attack.Tick(21, true, true);
+        attack.Tick(21.1, true, true);
         Assert.Equal(GripRelease.SmallProjectile, attack.Release(21.1, 99, true, true));
     }
 
