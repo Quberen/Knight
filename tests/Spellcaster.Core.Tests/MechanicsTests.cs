@@ -120,4 +120,24 @@ public class MechanicsTests
         Assert.Equal(0, ledger.Hit(999, 0));
         Assert.Equal(0, ledger.Hit(id, 0));
     }
+
+    [Fact]
+    public void RejectedAccumulatorOverflowPreservesFractionalSoul()
+    {
+        var accumulator = new SoulAccumulator();
+        Assert.Equal(0, accumulator.Add(.5));
+        Assert.Throws<ArgumentOutOfRangeException>(() => accumulator.Add(int.MaxValue));
+        Assert.Equal(.5, accumulator.Remainder);
+        Assert.Equal(1, accumulator.Add(.5));
+    }
+
+    [Fact]
+    public void ChangingSoulCharmsCannotRepayAnAlreadyRewardedSegment()
+    {
+        var ledger = new SoulLedger();
+        long cast = ledger.BeginCast();
+        Assert.Equal(9, ledger.Hit(cast, 0));
+        Assert.Equal(0, ledger.Hit(cast, 0, true, true));
+        Assert.Equal(20, ledger.Hit(cast, 1, true, true));
+    }
 }

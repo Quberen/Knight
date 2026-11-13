@@ -193,4 +193,61 @@ public class MageGripTests
         Assert.True(attack.Winding(0.8, shamanMaster: true));
         Assert.False(attack.Winding(1.5, shamanMaster: true));
     }
+
+    [Theory]
+    [InlineData(true, false, false, false, false, false, false)]
+    [InlineData(false, false, false, false, false, false, true)]
+    [InlineData(true, true, false, false, false, false, true)]
+    [InlineData(true, false, true, false, false, false, true)]
+    [InlineData(true, false, false, true, false, false, true)]
+    [InlineData(true, false, false, false, true, false, true)]
+    [InlineData(true, false, false, false, false, true, true)]
+    public void EachDropConditionDiscardsCharge(bool canPlay, bool transition, bool dead,
+        bool hazard, bool respawning, bool noInput, bool expected) =>
+        Assert.Equal(expected, GripAttack.MustDropCharge(canPlay, transition, dead, hazard, respawning, noInput));
+
+    [Fact]
+    public void PendingCastKeepsReleaseDirectionAndTierUntilInclusiveDeadline()
+    {
+        var pending = new GripPendingCast();
+        pending.Queue(10, 270, GripRelease.ChargedSpell);
+        foreach (double now in new[] { 10, 10.5, 11 })
+        {
+            Assert.True(pending.TryGet(now, out int direction, out var release));
+            Assert.Equal(270, direction);
+            Assert.Equal(GripRelease.ChargedSpell, release);
+        }
+        Assert.False(pending.TryGet(11.00001, out _, out _));
+        Assert.False(pending.TryGet(12, out _, out _));
+    }
+
+    [Fact]
+    public void PendingCastCanBeCancelledOrReplacedWithoutReplayingOldRelease()
+    {
+        var pending = new GripPendingCast();
+        Assert.False(pending.TryGet(0, out _, out _));
+        pending.Queue(0, 270, GripRelease.ChargedSpell);
+        pending.Clear();
+        Assert.False(pending.TryGet(.1, out _, out _));
+        pending.Queue(.2, 90, GripRelease.NormalSpell);
+        Assert.True(pending.TryGet(.3, out int direction, out var release));
+        Assert.Equal(90, direction);
+        Assert.Equal(GripRelease.NormalSpell, release);
+        pending.Queue(.4, 180, GripRelease.None);
+        Assert.False(pending.TryGet(.5, out _, out _));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void FirstTierRemainsFixedAndStoredWithEverySecondTierModifier(bool stone, bool fast)
+    {
+        var attack = new GripAttack();
+        attack.Press(0);
+        Assert.Equal(1, attack.StoredTier(.45, true, stone, fast));
+        Assert.Equal(2, attack.StoredTier(3600, true, stone, fast));
+        Assert.Equal(GripRelease.ChargedSpell, attack.Release(3600, 48, true, true, stone, fast));
+    }
 }

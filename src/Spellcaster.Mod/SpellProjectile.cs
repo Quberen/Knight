@@ -136,8 +136,9 @@ internal sealed class SpellProjectile : MonoBehaviour
         if (scaled)
         {
             transform.localScale = originalScale;
-            transform.rotation = originalRotation;
         }
+        // Launch rotates before Set Damage; a pooled activation can end before scaling.
+        if (Small) transform.rotation = originalRotation;
         scaled = false; cast = null; runtime = null; velocity = Vector2.zero;
     }
 

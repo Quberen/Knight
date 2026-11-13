@@ -52,6 +52,7 @@ public sealed class SpellRuntime : MonoBehaviour
         ModHooks.BeforePlayerDeadHook += ResetAll;
         UnityEngine.SceneManagement.SceneManager.activeSceneChanged += OnSceneChanged;
         ResetAll();
+        RefreshDamageHooks();
         SetShadowChain(true);
         InstallNotches();
         ProjectileInteractions.Install();
@@ -115,7 +116,7 @@ public sealed class SpellRuntime : MonoBehaviour
 
     private void RefreshDamageHooks()
     {
-        bool needed = collector || grip != null;
+        bool needed = installed; // Spell refunds are global; Collector only halves nail soul.
         if (needed != damageHooks)
         {
             if (needed)
@@ -145,6 +146,8 @@ public sealed class SpellRuntime : MonoBehaviour
         notches = null;
         SetGrip(false);
         SetCollector(false);
+        installed = false;
+        RefreshDamageHooks();
         ProjectileInteractions.Uninstall();
         SpellProjectile.RestoreAll();
         On.HutongGames.PlayMaker.FsmState.OnEnter -= OnStateEnter;
@@ -390,7 +393,7 @@ public sealed class SpellRuntime : MonoBehaviour
     {
         if (!CanPlay || PlayerData.instance == null) return;
         bool small = source.Cast.Kind == CastKind.SmallProjectile;
-        if (small ? grip == null : !collector) return;
+        if (small && grip == null) return;
         var data = PlayerData.instance;
         int segment = source.Segment(targetId, Time.fixedTimeAsDouble);
         if (!casts.Contains(source.Cast)) return;

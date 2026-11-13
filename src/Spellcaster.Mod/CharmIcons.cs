@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using Spellcaster.Core;
 using UnityEngine;
 
@@ -33,8 +32,6 @@ internal static class CharmIcons
 
     private static Sprite[][]? variants; // [charmIndex][variant]
     private static bool built;
-
-    internal static bool Ready => built && variants != null;
 
     internal static string DebugInfo()
     {
@@ -95,37 +92,6 @@ internal static class CharmIcons
         var set = variants[SpellCharms.IndexOf(id)];
         if (set == null) return null;
         return set[SpellCharms.ClampVariant(variant)];
-    }
-
-    internal static void SaveComparison(string directory)
-    {
-        Ensure();
-        if (variants == null) return;
-        Directory.CreateDirectory(directory);
-        for (int c = 0; c < SpellCharms.Count; c++)
-        {
-            if (variants[c] == null) continue;
-            for (int v = 0; v < SpellCharms.IconVariants; v++)
-            {
-                var sprite = variants[c][v];
-                if (sprite == null) continue;
-                var tex = sprite.texture;
-                if (tex == null) continue;
-                // The variant textures are readable (we created them).
-                string name = SpellCharms.Ids[c] + "-v" + v + ".png";
-                try
-                {
-                    var copy = ReadableCopy(sprite);
-                    if (copy == null) continue;
-                    File.WriteAllBytes(Path.Combine(directory, name), copy.EncodeToPNG());
-                    UnityEngine.Object.Destroy(copy);
-                }
-                catch (Exception e)
-                {
-                    Modding.Logger.Log("[Spellcaster] CharmIcons save " + name + ": " + e.Message);
-                }
-            }
-        }
     }
 
     private static bool HasSubstance()
@@ -204,7 +170,7 @@ internal static class CharmIcons
     }
 
     /// <summary>
-    /// GPU-copy a sprite's region to a readable Texture2D. Tries textureRect, then rect, then UV bounds.
+    /// GPU-copy a sprite's region to a readable Texture2D using UV bounds, then textureRect.
     /// </summary>
     private static Texture2D? ReadableCopy(Sprite sprite)
     {
@@ -214,11 +180,13 @@ internal static class CharmIcons
 
         var rt = RenderTexture.GetTemporary(source.width, source.height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default);
         var prev = RenderTexture.active;
+        Texture2D? full = null;
+        Texture2D? crop = null;
         try
         {
             Graphics.Blit(source, rt);
             RenderTexture.active = rt;
-            var full = new Texture2D(source.width, source.height, TextureFormat.RGBA32, false);
+            full = new Texture2D(source.width, source.height, TextureFormat.RGBA32, false);
             full.ReadPixels(new Rect(0, 0, source.width, source.height), 0, 0);
             full.Apply();
 
@@ -240,15 +208,15 @@ internal static class CharmIcons
                 }
                 else
                 {
-                    UnityEngine.Object.Destroy(full);
                     return null;
                 }
             }
-            var crop = new Texture2D(w, h, TextureFormat.RGBA32, false);
+            crop = new Texture2D(w, h, TextureFormat.RGBA32, false);
             crop.SetPixels(full.GetPixels(x, y, w, h));
             crop.Apply();
-            UnityEngine.Object.Destroy(full);
-            return crop;
+            var result = crop;
+            crop = null; // Transfer ownership to the caller.
+            return result;
         }
         catch (Exception e)
         {
@@ -257,6 +225,8 @@ internal static class CharmIcons
         }
         finally
         {
+            if (full != null) UnityEngine.Object.Destroy(full);
+            if (crop != null) UnityEngine.Object.Destroy(crop);
             RenderTexture.active = prev;
             RenderTexture.ReleaseTemporary(rt);
         }

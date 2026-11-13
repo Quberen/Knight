@@ -163,16 +163,11 @@ internal sealed class CharmBoard
 
         // Small lift of ONLY the fifth row (41–43), not the vanilla 4 rows, so the
         // new charms sit clear of the bottom flourish. Keep a gap under row 4.
-        const float fifthLift = 0.55f;
         var bb31 = Child(backboards, "BB 31");
         var bb41 = Child(backboards, "BB 41");
         float y31 = bb31 != null ? bb31.transform.localPosition.y : 0f;
         float y41before = bb41 != null ? bb41.transform.localPosition.y : 0f;
-        float lift = fifthLift;
-        // Do not close the gap to row 4 below a comfortable minimum (~0.55).
-        const float minGap = 0.55f;
-        float gap = y31 - (y41before + lift);
-        if (gap < minGap) lift = Math.Max(0f, (y31 - y41before) - minGap);
+        float lift = CharmBoardLayout.Lift(y31, y41before);
         if (lift > 0.01f)
         {
             foreach (int id in SpellCharms.Ids)

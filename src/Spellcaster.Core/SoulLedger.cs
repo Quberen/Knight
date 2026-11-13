@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace Spellcaster.Core;
 
-public enum CastKind { SmallProjectile, NormalSpell, ChargedSpell, ChainDash }
+public enum CastKind { SmallProjectile, NormalSpell, ChargedSpell }
 
 public static class SoulFormula
 {

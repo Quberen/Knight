@@ -66,9 +66,10 @@ internal sealed class ShadowChainRuntime
 
     private void OnFinishedDashing(On.HeroController.orig_FinishedDashing orig, HeroController self)
     {
+        bool wasShadow = self.cState.shadowDashing;
         orig(self);
         // Start the 0.3s window from dash end; vanilla DASH_COOLDOWN is longer than 0.3s from dash start.
-        if (Observe(self)) chain.ExtendWindow(Time.timeAsDouble);
+        if (Observe(self) && wasShadow) chain.ExtendWindow(Time.timeAsDouble);
     }
 
     private bool OnCanDash(On.HeroController.orig_CanDash orig, HeroController self)

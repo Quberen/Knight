@@ -22,6 +22,10 @@ public sealed class GripAttack
     private double nextAttack;
     public bool Holding => pressedAt.HasValue;
 
+    public static bool MustDropCharge(bool canPlay, bool transitioning, bool dead,
+        bool hazardDeath, bool hazardRespawning, bool noInput) =>
+        !canPlay || transitioning || dead || hazardDeath || hazardRespawning || noInput;
+
     public bool CanAttack(double now) => now + 1e-9 >= nextAttack;
     public void Press(double now)
     {
@@ -153,3 +157,30 @@ public static class GripProjectiles
         fireballLevel < 1 ? null : fireballLevel > 1 ? ShadeSoulState : VengefulSpiritState;
 }
 
+
+/// <summary>A released spell retains its direction while waiting for the spell FSM.</summary>
+public sealed class GripPendingCast
+{
+    private GripRelease release;
+    private int direction;
+    private double until;
+
+    public void Queue(double now, int releaseDirection, GripRelease kind)
+    {
+        Numbers.RequireFiniteNonnegative(now, nameof(now));
+        direction = releaseDirection;
+        release = kind;
+        until = now + 1;
+    }
+
+    public bool TryGet(double now, out int releaseDirection, out GripRelease kind)
+    {
+        Numbers.RequireFiniteNonnegative(now, nameof(now));
+        if (now > until) Clear();
+        releaseDirection = direction;
+        kind = release;
+        return release != GripRelease.None;
+    }
+
+    public void Clear() => release = GripRelease.None;
+}

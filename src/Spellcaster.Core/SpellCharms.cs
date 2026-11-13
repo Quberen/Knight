@@ -114,7 +114,7 @@ public static class SpellCharms
     public static string EnglishDescription(int id) => id switch
     {
         MageGripId =>
-            "Tap Quick Cast to fire a small Vengeful Spirit (always the white form, even with Shade Soul unlocked) in the input direction, dealing about half nail damage at no soul cost; nail soul gain is halved. Hold to charge (0.45s); once charged, keep holding to store it while moving, then release to cast the unlocked spell for 25 soul.",
+            "Tap Quick Cast to fire a small Vengeful Spirit (always the white form, even with Shade Soul unlocked) in the input direction, dealing about half nail damage at no soul cost; the small shot restores half nail soul. Hold to charge (0.45s); once charged, keep holding to store it while moving, then release to cast the unlocked spell for 25 soul.",
         ShamanMasterId =>
             "Requires Mage's Grip to be equipped. After the first charge, keep holding Quick Cast to the second threshold (1.5s, or 1.1s with Shaman Stone) for a second flash; the charge stays stored until release: double damage, larger range, 48 soul (36 with Spell Twister).",
         SoulCollectorId =>
@@ -153,4 +153,14 @@ public static class SpellCharms
 
     public static int ClampVariant(int variant) =>
         Math.Max(0, Math.Min(IconVariants - 1, variant));
+}
+
+/// <summary>Lift only the added row, retaining clearance below the fourth row.</summary>
+public static class CharmBoardLayout
+{
+    public const float FifthLift = 0.55f;
+    public const float MinGap = 0.55f;
+
+    public static float Lift(float fourthY, float fifthY) =>
+        Math.Max(0f, Math.Min(FifthLift, fourthY - fifthY - MinGap));
 }
