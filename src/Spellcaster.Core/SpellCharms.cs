@@ -3,8 +3,8 @@ using System;
 namespace Spellcaster.Core;
 
 /// <summary>
-/// The three Spellcaster charms that appear on the charm board.
-/// IDs are fixed at 41–43 (immediately after vanilla 1–40) so saves and language keys stay stable.
+/// The Spellcaster charms that appear on the charm board.
+/// IDs are fixed at 41–44 (immediately after vanilla 1–40) so saves and language keys stay stable.
 /// Ownership and equipped flags are stored in the mod's local settings, not in PlayerData fields.
 /// </summary>
 public static class SpellCharms
@@ -12,22 +12,26 @@ public static class SpellCharms
     public const int MageGripId = 41;
     public const int ShamanMasterId = 42;
     public const int SoulCollectorId = 43;
+    public const int ImprovedKingSoulId = 44;
     public const int FirstId = MageGripId;
-    public const int LastId = SoulCollectorId;
-    public const int Count = 3;
+    public const int LastId = ImprovedKingSoulId;
+    public const int Count = 4;
 
     public const int DefaultGripCost = 1;
     public const int DefaultShamanCost = 3;
     public const int DefaultCollectorCost = 2; // DESIGN.md
+    public const int DefaultKingSoulCost = 5; // DESIGN.md
 
     public const int IconVariants = 3;
 
     // User-picked appearances: Grip C (warm gold), Shaman A (amber), Collector A (soul teal).
+    // Improved King's Soul default A (pale royal ivory), distinct from those three.
     public const int DefaultGripIcon = 2;
     public const int DefaultShamanIcon = 0;
     public const int DefaultCollectorIcon = 0;
+    public const int DefaultKingSoulIcon = 0;
 
-    public static readonly int[] Ids = { MageGripId, ShamanMasterId, SoulCollectorId };
+    public static readonly int[] Ids = { MageGripId, ShamanMasterId, SoulCollectorId, ImprovedKingSoulId };
 
     public static bool IsOurs(int id) => id >= FirstId && id <= LastId;
 
@@ -85,6 +89,7 @@ public static class SpellCharms
         MageGripId => "Mage's Grip",
         ShamanMasterId => "Shaman Master",
         SoulCollectorId => "Soul Collector",
+        ImprovedKingSoulId => "Improved King's Soul",
         _ => throw new ArgumentOutOfRangeException(nameof(id))
     };
 
@@ -93,6 +98,7 @@ public static class SpellCharms
         MageGripId => "法师之握",
         ShamanMasterId => "萨满大师",
         SoulCollectorId => "灵魂收集者",
+        ImprovedKingSoulId => "改进版国王之魂",
         _ => throw new ArgumentOutOfRangeException(nameof(id))
     };
 
@@ -108,6 +114,8 @@ public static class SpellCharms
             "需要已装备法师之握。第一段蓄满后继续按住快捷施法到第二段（1.5 秒；装备萨满之石时 1.1 秒），魂足够才再闪一次，同样可保存；第一段是原版法术，只有第二段是大大法术：伤害 ×2，范围 ×1.45，耗 48 魂（装备法术扭曲者时 36）。极速施法使第二段时间 ×1.5，为 2.25 / 1.65 秒。松开时魂不足第二段但至少 25 时施放第一段。",
         SoulCollectorId =>
             "法术命中每段固定回 9 魂，可与捕魂者、噬魂者一同生效。骨钉回魂减半。",
+        ImprovedKingSoulId =>
+            "需要已获得原版国王之魂才能装备。按当前魂量持续回魂：0–23 魂每秒 6，24–65 每秒 3，66 以上每秒 2。装备后原版国王之魂的回魂不会同时生效。",
         _ => throw new ArgumentOutOfRangeException(nameof(id))
     };
 
@@ -119,6 +127,8 @@ public static class SpellCharms
             "Requires Mage's Grip to be equipped. After the first charge, keep holding Quick Cast to the second threshold (1.5s, or 1.1s with Shaman Stone) for a second flash only with enough soul. The first store is vanilla; only the second is the big spell: ×2 damage, ×1.45 range, 48 soul (36 with Spell Twister). Fast Casting multiplies the second time by 1.5: 2.25s / 1.65s. If soul falls below the second cost, release falls back to the first store with at least 25 soul.",
         SoulCollectorId =>
             "Each damaging spell hit restores a flat 9 soul, stacking with Soul Catcher and Soul Eater. Nail soul gain is halved.",
+        ImprovedKingSoulId =>
+            "Requires the vanilla King's Soul to equip. Regenerates soul over time by current soul: 6 per second at 0–23, 3 per second at 24–65, and 2 per second at 66 or more. Vanilla King's Soul regeneration does not take effect at the same time.",
         _ => throw new ArgumentOutOfRangeException(nameof(id))
     };
 
@@ -131,6 +141,7 @@ public static class SpellCharms
         MageGripId => DefaultGripIcon,
         ShamanMasterId => DefaultShamanIcon,
         SoulCollectorId => DefaultCollectorIcon,
+        ImprovedKingSoulId => DefaultKingSoulIcon,
         _ => throw new ArgumentOutOfRangeException(nameof(id))
     };
 
@@ -140,6 +151,7 @@ public static class SpellCharms
         if (id == MageGripId) return Math.Max(1, Math.Min(2, cost <= 0 ? fallback : cost));
         if (id == ShamanMasterId) return Math.Max(1, Math.Min(5, cost <= 0 ? fallback : cost));
         if (id == SoulCollectorId) return Math.Max(1, Math.Min(3, cost <= 0 ? fallback : cost));
+        if (id == ImprovedKingSoulId) return Math.Max(1, Math.Min(5, cost <= 0 ? fallback : cost));
         throw new ArgumentOutOfRangeException(nameof(id));
     }
 
@@ -148,6 +160,7 @@ public static class SpellCharms
         MageGripId => DefaultGripCost,
         ShamanMasterId => DefaultShamanCost,
         SoulCollectorId => DefaultCollectorCost,
+        ImprovedKingSoulId => DefaultKingSoulCost,
         _ => throw new ArgumentOutOfRangeException(nameof(id))
     };
 

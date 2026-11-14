@@ -29,6 +29,13 @@ internal static class CharmIcons
         new Vector4(0.33f, 1.20f, 1.05f, 0), // leaf green
         new Vector4(0.62f, 1.10f, 1.20f, 0), // pale blue
     };
+    // Recolors of vanilla King's Soul (charm 36). Default A = pale royal ivory.
+    private static readonly Vector4[] KingSoulTint =
+    {
+        new Vector4(0.10f, 1.15f, 1.12f, 0), // pale royal ivory
+        new Vector4(0.90f, 1.20f, 1.08f, 0), // rose gold
+        new Vector4(0.58f, 1.15f, 1.12f, 0), // moonlight
+    };
 
     private static Sprite[][]? variants; // [charmIndex][variant]
     private static bool built;
@@ -60,7 +67,7 @@ internal static class CharmIcons
         built = false;
         variants = null;
         var list = CharmIconList.Instance;
-        if (list == null || list.spriteList == null || list.spriteList.Length <= 33)
+        if (list == null || list.spriteList == null || list.spriteList.Length <= 36)
         {
             Modding.Logger.Log("[Spellcaster] CharmIcons: CharmIconList not ready (" + DebugInfo() + ")");
             return;
@@ -68,19 +75,24 @@ internal static class CharmIcons
         Sprite? twister = Pick(list, 33);
         Sprite? stone = Pick(list, 19);
         Sprite? catcher = Pick(list, 20);
-        if (twister == null || stone == null || catcher == null)
+        // Prefer spriteList[36] so Void Heart does not replace the Kingsoul source.
+        Sprite? kingsoul = PickRaw(list, 36);
+        if (twister == null || stone == null || catcher == null || kingsoul == null)
         {
             Modding.Logger.Log("[Spellcaster] CharmIcons: missing source sprite twister=" + (twister != null)
-                + " stone=" + (stone != null) + " catcher=" + (catcher != null));
+                + " stone=" + (stone != null) + " catcher=" + (catcher != null)
+                + " kingsoul=" + (kingsoul != null));
             return;
         }
         LogSprite("twister", twister);
         LogSprite("stone", stone);
         LogSprite("catcher", catcher);
+        LogSprite("kingsoul", kingsoul);
         variants = new Sprite[SpellCharms.Count][];
         variants[0] = BuildSet(twister, GripTint);
         variants[1] = BuildSet(stone, ShamanTint);
         variants[2] = BuildSet(catcher, CollectorTint);
+        variants[3] = BuildSet(kingsoul, KingSoulTint);
         built = HasSubstance();
         Modding.Logger.Log("[Spellcaster] CharmIcons.Ensure " + DebugInfo());
     }
@@ -116,6 +128,13 @@ internal static class CharmIcons
         if (s == null && list.spriteList != null && id >= 0 && id < list.spriteList.Length)
             s = list.spriteList[id];
         return s;
+    }
+
+    private static Sprite? PickRaw(CharmIconList list, int id)
+    {
+        if (list.spriteList != null && id >= 0 && id < list.spriteList.Length && list.spriteList[id] != null)
+            return list.spriteList[id];
+        return Pick(list, id);
     }
 
     private static void LogSprite(string label, Sprite sprite)

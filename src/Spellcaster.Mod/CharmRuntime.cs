@@ -21,11 +21,12 @@ public sealed class LocalSettings
     public CharmSave MageGrip = new CharmSave();
     public CharmSave ShamanMaster = new CharmSave();
     public CharmSave SoulCollector = new CharmSave();
+    public CharmSave ImprovedKingSoul = new CharmSave();
 }
 
 /// <summary>
-/// Wires the three Spellcaster charms into PlayerData hooks, notch accounting, and Mage's Grip /
-/// Shaman Master / Soul Collector effects. The charm board UI is in <see cref="CharmBoard"/>.
+/// Wires the Spellcaster charms into PlayerData hooks, notch accounting, and Mage's Grip /
+/// Shaman Master / Soul Collector / Improved King's Soul effects. The charm board UI is in <see cref="CharmBoard"/>.
 /// </summary>
 internal sealed class CharmRuntime
 {
@@ -48,6 +49,8 @@ internal sealed class CharmRuntime
     internal bool GripEquipped => Flag(SpellCharms.MageGripId).Equipped;
     internal bool ShamanEquipped => Flag(SpellCharms.ShamanMasterId).Equipped && GripEquipped;
     internal bool CollectorEquipped => Flag(SpellCharms.SoulCollectorId).Equipped;
+    internal bool KingSoulEquipped =>
+        Flag(SpellCharms.ImprovedKingSoulId).Equipped && KingSoulRuntime.HasVanillaKingsoul(PlayerData.instance);
 
     internal void Install()
     {
@@ -118,7 +121,8 @@ internal sealed class CharmRuntime
     }
 
     /// <summary>
-    /// Every save (new or existing) owns all three Spellcaster charms, not auto-equipped.
+    /// Every save (new or existing) owns all Spellcaster charms, not auto-equipped.
+    /// Improved King's Soul still requires vanilla King's Soul (<c>royalCharmState == 3</c>) to equip.
     /// The "new" orb is only set the first time a charm becomes owned.
     /// </summary>
     internal void EnsureOwned(bool asNew)
@@ -139,9 +143,24 @@ internal sealed class CharmRuntime
 
     internal void SyncEffects()
     {
+        DropKingSoulIfPrerequisiteLost();
         runtime.SetCollector(CollectorEquipped);
         runtime.SetGrip(GripEquipped);
+        runtime.SetKingSoul(KingSoulEquipped);
         runtime.ResetCharge();
+    }
+
+    private void DropKingSoulIfPrerequisiteLost()
+    {
+        var flag = Flag(SpellCharms.ImprovedKingSoulId);
+        if (!flag.Equipped) return;
+        if (KingSoulRuntime.HasVanillaKingsoul(PlayerData.instance)) return;
+        flag.Equipped = false;
+        var pd = PlayerData.instance;
+        if (pd == null) return;
+        var list = pd.equippedCharms ?? pd.GetVariable<System.Collections.Generic.List<int>>("equippedCharms");
+        list?.Remove(SpellCharms.ImprovedKingSoulId);
+        try { pd.CalculateNotchesUsed(); } catch { }
     }
 
     private CharmSave Flag(int id) => id switch
@@ -149,6 +168,7 @@ internal sealed class CharmRuntime
         SpellCharms.MageGripId => local().MageGrip,
         SpellCharms.ShamanMasterId => local().ShamanMaster,
         SpellCharms.SoulCollectorId => local().SoulCollector,
+        SpellCharms.ImprovedKingSoulId => local().ImprovedKingSoul,
         _ => throw new ArgumentOutOfRangeException(nameof(id))
     };
 
@@ -160,6 +180,7 @@ internal sealed class CharmRuntime
             SpellCharms.MageGripId => SpellCharms.ClampCost(id, s.MageGripNotchCost),
             SpellCharms.ShamanMasterId => SpellCharms.ClampCost(id, s.ShamanMasterNotchCost),
             SpellCharms.SoulCollectorId => SpellCharms.ClampCost(id, s.SoulCollectorNotchCost),
+            SpellCharms.ImprovedKingSoulId => SpellCharms.ClampCost(id, s.ImprovedKingSoulNotchCost),
             _ => SpellCharms.DefaultCost(id)
         };
     }
@@ -283,7 +304,10 @@ internal sealed class CharmRuntime
         else if (name.StartsWith("newCharm_", StringComparison.Ordinal)) flag.New = orig;
         else if (name.StartsWith("equippedCharm_", StringComparison.Ordinal))
         {
+            if (id == SpellCharms.ImprovedKingSoulId && orig && !KingSoulRuntime.HasVanillaKingsoul(PlayerData.instance))
+                return false;
             flag.Equipped = orig;
+            if (id == SpellCharms.ImprovedKingSoulId && orig) UnequipVanillaKingsoul(PlayerData.instance);
             SyncEffects();
         }
         // Returning orig is fine: SetBoolInternal uses SetFieldSafe and no-ops on missing fields.
@@ -299,12 +323,25 @@ internal sealed class CharmRuntime
 
     private void OnEquipCharm(On.PlayerData.orig_EquipCharm orig, PlayerData self, int charmNum)
     {
+        if (charmNum == SpellCharms.ImprovedKingSoulId && !KingSoulRuntime.HasVanillaKingsoul(self))
+            return;
         orig(self, charmNum);
         if (SpellCharms.IsOurs(charmNum))
         {
             Flag(charmNum).Equipped = true;
+            if (charmNum == SpellCharms.ImprovedKingSoulId) UnequipVanillaKingsoul(self);
             SyncEffects();
         }
+    }
+
+    private static void UnequipVanillaKingsoul(PlayerData pd)
+    {
+        if (pd == null) return;
+        try
+        {
+            if (pd.GetBool("equippedCharm_36")) pd.UnequipCharm(36);
+        }
+        catch (Exception e) { Modding.Logger.Log("[Spellcaster] unequip Kingsoul: " + e.Message); }
     }
 
     private void OnUnequipCharm(On.PlayerData.orig_UnequipCharm orig, PlayerData self, int charmNum)

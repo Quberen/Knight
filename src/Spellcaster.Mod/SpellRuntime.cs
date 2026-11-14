@@ -27,6 +27,7 @@ public sealed class SpellRuntime : MonoBehaviour
     private ShadowChainRuntime? shadowChain;
     private CharmNotchRuntime? notches;
     private CharmRuntime? charms;
+    private KingSoulRuntime? kingSoul;
     private readonly SoulAccumulator gripSoul = new SoulAccumulator();
     private HeroController? hero;
     private Settings settings = new Settings();
@@ -100,6 +101,23 @@ public sealed class SpellRuntime : MonoBehaviour
         ResetSoul();
     }
 
+    public void SetKingSoul(bool enabled)
+    {
+        if (!installed) return;
+        if (enabled)
+        {
+            if (kingSoul == null)
+            {
+                kingSoul = new KingSoulRuntime(() => charms != null && charms.KingSoulEquipped);
+                kingSoul.Install();
+            }
+        }
+        else
+        {
+            kingSoul?.Reset();
+        }
+    }
+
     private void InstallNotches()
     {
         if (notches != null) return;
@@ -146,6 +164,8 @@ public sealed class SpellRuntime : MonoBehaviour
         notches = null;
         SetGrip(false);
         SetCollector(false);
+        kingSoul?.Uninstall();
+        kingSoul = null;
         installed = false;
         RefreshDamageHooks();
         ProjectileInteractions.Uninstall();
@@ -175,6 +195,7 @@ public sealed class SpellRuntime : MonoBehaviour
     {
         grip?.Reset();
         shadowChain?.Reset();
+        kingSoul?.Reset();
         SpellProjectile.RetireSmall();
         ChargedSpellEffect.RestoreAll();
         ResetSoul();
@@ -195,6 +216,8 @@ public sealed class SpellRuntime : MonoBehaviour
             hero = nextHero;
         }
         CleanupCasts();
+        if (kingSoul != null)
+            kingSoul.Tick(CanPlay ? Time.deltaTime : 0f, CanPlay ? hero : null);
     }
 
     private void CleanupCasts()

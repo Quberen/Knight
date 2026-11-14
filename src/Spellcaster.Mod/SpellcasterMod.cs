@@ -11,6 +11,7 @@ public sealed class Settings
     public int MageGripNotchCost = SpellCharms.DefaultGripCost;
     public int ShamanMasterNotchCost = SpellCharms.DefaultShamanCost;
     public int SoulCollectorNotchCost = SpellCharms.DefaultCollectorCost;
+    public int ImprovedKingSoulNotchCost = SpellCharms.DefaultKingSoulCost;
     public bool FastCastingEnabled;
     // 0 = use earned vanilla notches; 12–16 = requested total (never below earned, cap 16).
     public int CharmNotchTotal;
@@ -29,7 +30,7 @@ public sealed class SpellcasterMod : Modding.Mod, ITogglableMod, IGlobalSettings
     private LocalSettings local = new LocalSettings();
     private SpellRuntime? runtime;
     public SpellcasterMod() : base("Spellcaster") { }
-    public override string GetVersion() => "0.6.5";
+    public override string GetVersion() => "0.7.0";
     public bool ToggleButtonInsideMenu => false;
 
     public override void Initialize()
@@ -42,14 +43,16 @@ public sealed class SpellcasterMod : Modding.Mod, ITogglableMod, IGlobalSettings
         runtime.Install(settings);
         runtime.InstallCharms(() => local, value => local = value ?? new LocalSettings());
         Log("Stage 5 (real charms) initialized; charms owned by default on every save;"
-            + " icons(grip=C, shaman=A, collector=A)"
+            + " icons(grip=C, shaman=A, collector=A, kingsoul=A)"
             + " costs(grip=" + settings.MageGripNotchCost
             + ", shaman=" + settings.ShamanMasterNotchCost
             + ", collector=" + settings.SoulCollectorNotchCost
+            + ", kingsoul=" + settings.ImprovedKingSoulNotchCost
             + ", charmTotal=" + (settings.CharmNotchTotal == 0 ? "vanilla" : settings.CharmNotchTotal.ToString()) + ")"
             + " equipped(grip=" + local.MageGrip.Equipped
             + ", shaman=" + local.ShamanMaster.Equipped
-            + ", collector=" + local.SoulCollector.Equipped + ")"
+            + ", collector=" + local.SoulCollector.Equipped
+            + ", kingsoul=" + local.ImprovedKingSoul.Equipped + ")"
             + " shadowChain=Dashmaster+ShamanStone"
             + " fastCast=" + settings.FastCastingEnabled
             + " quakeInvuln=" + (settings.QuakeInvulnerabilitySeconds.HasValue
@@ -79,6 +82,7 @@ public sealed class SpellcasterMod : Modding.Mod, ITogglableMod, IGlobalSettings
         local.MageGrip ??= new CharmSave();
         local.ShamanMaster ??= new CharmSave();
         local.SoulCollector ??= new CharmSave();
+        local.ImprovedKingSoul ??= new CharmSave();
         runtime?.Charms?.ApplySettings();
     }
     public LocalSettings OnSaveLocal() => local;
@@ -88,6 +92,7 @@ public sealed class SpellcasterMod : Modding.Mod, ITogglableMod, IGlobalSettings
         value.MageGripNotchCost = SpellCharms.ClampCost(SpellCharms.MageGripId, value.MageGripNotchCost);
         value.ShamanMasterNotchCost = SpellCharms.ClampCost(SpellCharms.ShamanMasterId, value.ShamanMasterNotchCost);
         value.SoulCollectorNotchCost = SpellCharms.ClampCost(SpellCharms.SoulCollectorId, value.SoulCollectorNotchCost);
+        value.ImprovedKingSoulNotchCost = SpellCharms.ClampCost(SpellCharms.ImprovedKingSoulId, value.ImprovedKingSoulNotchCost);
         value.CharmNotchTotal = CharmNotches.ClampTotal(value.CharmNotchTotal);
         value.CharmIconVariant = SpellCharms.ClampVariant(value.CharmIconVariant);
         if (value.QuakeInvulnerabilitySeconds.HasValue &&
@@ -99,7 +104,7 @@ public sealed class SpellcasterMod : Modding.Mod, ITogglableMod, IGlobalSettings
     {
         new IMenuMod.MenuEntry("Debug: give Spellcaster charms / 调试：给予法术流护符",
             new[] { "Off / 关闭", "Give / 给予" },
-            "The three Spellcaster charms are already owned on every save (not auto-equipped). This leftover debug switch is harmless: it does not grant or remove them.",
+            "The Spellcaster charms are already owned on every save (not auto-equipped). Improved King's Soul still needs vanilla King's Soul to equip. This leftover debug switch is harmless: it does not grant or remove them.",
             i => { settings.GiveSpellcasterCharms = i == 1; },
             () => settings.GiveSpellcasterCharms ? 1 : 0),
         new IMenuMod.MenuEntry("Mage's Grip notches / 法师之握槽位", new[] { "1", "2" },
@@ -114,6 +119,10 @@ public sealed class SpellcasterMod : Modding.Mod, ITogglableMod, IGlobalSettings
             "Notch cost counted toward overcharm when equipped. Default 2 (DESIGN.md).",
             i => { settings.SoulCollectorNotchCost = i + 1; runtime?.Charms?.ApplySettings(); },
             () => settings.SoulCollectorNotchCost - 1),
+        new IMenuMod.MenuEntry("Improved King's Soul notches / 改进版国王之魂槽位", new[] { "1", "2", "3", "4", "5" },
+            "Notch cost counted toward overcharm when equipped. Default 5 (DESIGN.md). Equipping still requires vanilla King's Soul.",
+            i => { settings.ImprovedKingSoulNotchCost = i + 1; runtime?.Charms?.ApplySettings(); },
+            () => settings.ImprovedKingSoulNotchCost - 1),
         new IMenuMod.MenuEntry("Fast Casting timing / 极速施法时间测试", new[] { "Off / 关闭", "On / 开启" },
             "Temporary: second charge time x1.5 ONLY. No damage, interval or other spell changes.",
             i => { runtime?.ResetCharge(); settings.FastCastingEnabled = i == 1; },
