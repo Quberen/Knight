@@ -10,7 +10,7 @@ using UnityEngine;
 namespace Spellcaster.Mod;
 
 /// <summary>
-/// Injects charms 41–43 onto the collected-charm board and the equipped-charm tray,
+/// Injects charms 41–44 onto the collected-charm board and the equipped-charm tray,
 /// and clones extra total-notch pips so a 16-notch cap is visible. Self-contained;
 /// does not require SFCore.
 /// </summary>
@@ -75,7 +75,7 @@ internal sealed class CharmBoard
 
         // Snapshot vanilla row-4 positions BEFORE shifting, then clone a 5th row,
         // then compress all 5 rows toward the bottom anchor (same as 0.5.0, which
-        // was visually verified). Only 41–43 are visible; 44–50 stay blanked.
+        // was visually verified). Only 41–44 are visible; 45–50 stay blanked.
         const int rows = 5;
         float rowScale = 4f / rows;
         float charmScale = Mathf.Sqrt(rowScale);
@@ -150,7 +150,7 @@ internal sealed class CharmBoard
             }
         }
 
-        // Collected-charm IDs are not arranged in numerical rows. Snap 41–43 onto their BBs.
+        // Collected-charm IDs are not arranged in numerical rows. Snap 41–44 onto their BBs.
         foreach (int id in SpellCharms.Ids)
         {
             var bb = Child(backboards, "BB " + id);
@@ -161,7 +161,7 @@ internal sealed class CharmBoard
             cc.transform.localScale = bb.transform.localScale;
         }
 
-        // Small lift of ONLY the fifth row (41–43), not the vanilla 4 rows, so the
+        // Small lift of ONLY the fifth row (41–44), not the vanilla 4 rows, so the
         // new charms sit clear of the bottom flourish. Keep a gap under row 4.
         var bb31 = Child(backboards, "BB 31");
         var bb41 = Child(backboards, "BB 41");
@@ -189,7 +189,7 @@ internal sealed class CharmBoard
 
         boardReady = true;
         bb41 = Child(backboards, "BB 41");
-        Modding.Logger.Log("[Spellcaster] charm board: injected ids 41–43 (5th row only lift="
+        Modding.Logger.Log("[Spellcaster] charm board: injected ids 41–44 (5th row only lift="
             + lift.ToString("0.00")
             + " localY 31=" + (bb31 != null ? bb31.transform.localPosition.y.ToString("0.00") : "?")
             + " 41before=" + y41before.ToString("0.00")
@@ -198,8 +198,8 @@ internal sealed class CharmBoard
 
     private static void EditNavigation(PlayMakerFSM fsm)
     {
-        // Fifth row is only 41–43. Down from 31–40 adds 10 then Update Cursor clamps to 43.
-        // Left wraps at 1/11/21/31/41; Right wraps at 10/20/30/40/43 (not 50).
+        // Fifth row is 41–44. Down from 31–40 adds 10 then Update Cursor clamps to LastId.
+        // Left wraps at 1/11/21/31/41; Right wraps at 10/20/30/40/LastId (not 50).
         try
         {
             var down = Action<IntCompare>(fsm, "Down", 0);

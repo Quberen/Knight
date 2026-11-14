@@ -50,4 +50,16 @@ public class RuntimePolicyTests
         Assert.Contains("if (small ? grip == null : !collector) return;", source);
         Assert.Contains("self.hp < hpBefore", source);
     }
+
+    [Fact]
+    public void KingSoulRuntimeUsesAddMPChargeAndSuppressesVanillaWhiteCharm()
+    {
+        string source = RuntimeSource("KingSoulRuntime");
+        Assert.Contains("hero.AddMPCharge(1)", source);
+        Assert.Contains("\"royalCharmState\"", source);
+        Assert.Contains("\"disablePause\"", source);
+        Assert.Contains("White Charm", source);
+        Assert.Contains("Soul UP", source);
+        Assert.Contains("AddMPCharge(4)", source);
+    }
 }

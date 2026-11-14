@@ -25,19 +25,20 @@ public class SpellCharmsTests
     }
 
     [Fact]
-    public void IdsAreFortyOneThroughFortyThreeAndDoNotOverlapVanilla()
+    public void IdsAreFortyOneThroughFortyFourAndDoNotOverlapVanilla()
     {
-        Assert.Equal(new[] { 41, 42, 43 }, SpellCharms.Ids);
-        Assert.Equal(3, SpellCharms.Count);
+        Assert.Equal(new[] { 41, 42, 43, 44 }, SpellCharms.Ids);
+        Assert.Equal(4, SpellCharms.Count);
         foreach (int id in SpellCharms.Ids)
         {
             Assert.True(SpellCharms.IsOurs(id));
             Assert.True(id > 40);
         }
         Assert.False(SpellCharms.IsOurs(40));
-        Assert.False(SpellCharms.IsOurs(44));
+        Assert.False(SpellCharms.IsOurs(45));
         Assert.Equal(0, SpellCharms.IndexOf(41));
         Assert.Equal(2, SpellCharms.IndexOf(43));
+        Assert.Equal(3, SpellCharms.IndexOf(44));
     }
 
     [Theory]
@@ -47,6 +48,9 @@ public class SpellCharmsTests
     [InlineData("charmCost_41", 41)]
     [InlineData("CHARM_NAME_42", 42)]
     [InlineData("CHARM_DESC_43", 43)]
+    [InlineData("gotCharm_44", 44)]
+    [InlineData("CHARM_NAME_44", 44)]
+    [InlineData("charmCost_44", 44)]
     public void TryParseRecognizesOurKeys(string key, int id)
     {
         Assert.True(SpellCharms.TryParse(key, out int parsed));
@@ -57,7 +61,7 @@ public class SpellCharmsTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("gotCharm_40")]
-    [InlineData("gotCharm_44")]
+    [InlineData("gotCharm_45")]
     [InlineData("charmSlots")]
     [InlineData("equippedCharm_16")]
     [InlineData("CHARM_NAME_19")]
@@ -96,6 +100,15 @@ public class SpellCharmsTests
         Assert.Equal("Mage's Grip", SpellCharms.EnglishName(41));
         Assert.Equal("萨满大师", SpellCharms.ChineseName(42));
         Assert.Equal("灵魂收集者", SpellCharms.ChineseName(43));
+        Assert.Equal("改进版国王之魂", SpellCharms.ChineseName(44));
+        Assert.Equal("Improved King's Soul", SpellCharms.EnglishName(44));
+        foreach (bool zh in new[] { true, false })
+        {
+            string desc = SpellCharms.DisplayDescription(44, zh);
+            foreach (string value in new[] { "0–23", "24–65", "66", "6", "3", "2" })
+                Assert.Contains(value, desc);
+            Assert.Contains(zh ? "原版国王之魂" : "vanilla King's Soul", desc);
+        }
         Assert.Contains("快捷施法", SpellCharms.ChineseDescription(41));
         Assert.Contains("快捷施法", SpellCharms.ChineseDescription(42));
         Assert.Contains("Quick Cast", SpellCharms.EnglishDescription(41));
@@ -169,6 +182,10 @@ public class SpellCharmsTests
     [InlineData(43, 2, 2)]
     [InlineData(43, 3, 3)]
     [InlineData(43, 9, 3)]
+    [InlineData(44, 0, 5)]
+    [InlineData(44, 5, 5)]
+    [InlineData(44, 1, 1)]
+    [InlineData(44, 9, 5)]
     public void CostsFollowDesignDefaultsAndClamp(int id, int raw, int expected) =>
         Assert.Equal(expected, SpellCharms.ClampCost(id, raw));
 
@@ -178,6 +195,7 @@ public class SpellCharmsTests
         Assert.Equal(1, SpellCharms.DefaultCost(41));
         Assert.Equal(3, SpellCharms.DefaultCost(42));
         Assert.Equal(2, SpellCharms.DefaultCost(43));
+        Assert.Equal(5, SpellCharms.DefaultCost(44));
     }
 
     [Fact]
@@ -187,6 +205,8 @@ public class SpellCharmsTests
         Assert.Equal(2, SpellCharms.DefaultIconVariant(41));
         Assert.Equal(0, SpellCharms.DefaultIconVariant(42));
         Assert.Equal(0, SpellCharms.DefaultIconVariant(43));
+        // Improved King's Soul = A (pale royal ivory).
+        Assert.Equal(0, SpellCharms.DefaultIconVariant(44));
     }
 
     [Theory]
